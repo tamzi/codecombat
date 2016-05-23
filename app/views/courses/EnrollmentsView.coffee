@@ -44,7 +44,7 @@ module.exports = class EnrollmentsView extends RootView
     @prepaids.comparator = '_id'
     @supermodel.trackRequest @prepaids.fetchByCreator(me.id)
     @debouncedRender = _.debounce @render, 0
-    @listenTo @prepaids, 'sync', -> @state.set('prepaidGroups', @prepaids.groupBy((p) -> p.status()))
+    @listenTo @prepaids, 'sync', @updatePrepaidGroups
     @listenTo(@state, 'all', @debouncedRender)
     @listenTo(me, 'change:enrollmentRequestSent', @debouncedRender)
 
@@ -56,6 +56,9 @@ module.exports = class EnrollmentsView extends RootView
     @calculateEnrollmentStats()
     @state.set('totalCourses', @courses.size())
     super()
+    
+  updatePrepaidGroups: ->
+    @state.set('prepaidGroups', @prepaids.groupBy((p) -> p.status()))
 
   calculateEnrollmentStats: ->
     @removeDeletedStudents()

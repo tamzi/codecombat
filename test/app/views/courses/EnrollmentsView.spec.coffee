@@ -93,7 +93,8 @@ describe 'EnrollmentsView', ->
         
   describe 'when there are no prepaids to show', ->
     beforeEach (done) ->
-      @view.prepaids.reset()
+      @view.prepaids.reset([])
+      @view.updatePrepaidGroups()
       _.defer(done)
       
     it 'fills the void with the rest of the page content', ->
