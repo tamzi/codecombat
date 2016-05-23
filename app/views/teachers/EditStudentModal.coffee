@@ -12,7 +12,7 @@ module.exports = class EditStudentModal extends ModalView
     'click .change-password-btn:not(.disabled)': 'onClickChangePassword'
     'input .new-password-input': 'onChangeNewPasswordInput'
 
-  initialize: ({ @user }) ->
+  initialize: ({ @user, @classroom }) ->
     @supermodel.trackRequest @user.fetch()
     @utils = require 'core/utils'
     @state = new State({
@@ -21,6 +21,10 @@ module.exports = class EditStudentModal extends ModalView
       newPassword: ""
     })
     @listenTo @state, 'change', @render
+    @listenTo @classroom, 'save-password:success', ->
+      @state.set { passwordChanged: true }
+    @listenTo @classroom, 'save-password:error', ->
+      # TODO: Show an error. (password too short)
 
   onClickSendRecoveryEmail: ->
     email = @user.get('email')
@@ -28,13 +32,7 @@ module.exports = class EditStudentModal extends ModalView
       @state.set { emailSent: true }
 
   onClickChangePassword: ->
-    @user.set({ password: @state.get('newPassword') })
-    @user.save()
-    @user.unset('password')
-    @listenToOnce @user, 'save:success', ->
-      @state.set { passwordChanged: true }
-    @listenTo @user, 'invalid', ->
-      # TODO: Show an error. (password too short)
+    @classroom.setStudentPassword(@user, @state.get('newPassword'))
 
   onChangeNewPasswordInput: (e) ->
     @state.set { newPassword: $(e.currentTarget).val() }, { silent: true }

@@ -94,18 +94,3 @@ module.exports =
         verify_link: "http://codecombat.com/user/#{user._id}/verify/#{user.verificationCode(timestamp)}"
     sendwithus.api.send context, (err, result) ->
     res.status(200).send({})
-
-  teacherPasswordReset: wrap (req, res, next) ->
-    newPassword = req.body.password
-    return next() if req.user.id is req.params.handle or not newPassword
-    ownedClassrooms = yield Classroom.find({ ownerID: mongoose.Types.ObjectId(req.user.id) })
-    ownedStudentIDs = _.flatten ownedClassrooms.map (c) ->
-      c.get('members').map (id) ->
-        id.toString()
-    studentID = req.params.handle
-    return next() unless studentID in ownedStudentIDs
-    student = yield User.findById(studentID)
-    if student.get('emailVerified')
-      return next new errors.Forbidden("Can't reset password for a student that has verified their email address.")
-    yield student.update({ $set: { passwordHash: User.hashPassword(newPassword) } })
-    res.status(200).send({})
