@@ -137,7 +137,7 @@ module.exports =
     for courseInstance in courseInstances
       if members = courseInstance.get('members')
         userIDs.push(userID) for userID in members
-    users = yield User.find({_id: {$in: userIDs}}, {coursePrepaid: 1})
+    users = yield User.find({_id: {$in: userIDs}}, {coursePrepaid: 1, coursePrepaidID: 1})
     
     prepaidIDs = []
     for user in users
