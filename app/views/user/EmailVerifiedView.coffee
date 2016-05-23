@@ -7,6 +7,9 @@ module.exports = class EmailVerifiedView extends RootView
   id: 'email-verified-view'
   template: template
 
+  events:
+    'click .login-button': 'onClickLoginButton'
+
   initialize: (options, @userID, @verificationCode) ->
     super(options)
     @state = new State(@getInitialState())
@@ -21,3 +24,7 @@ module.exports = class EmailVerifiedView extends RootView
 
   getInitialState: ->
     verifyStatus: 'pending'
+
+  onClickLoginButton: (e) ->
+    AuthModal = require 'views/core/AuthModal'
+    @openModalView(new AuthModal())
