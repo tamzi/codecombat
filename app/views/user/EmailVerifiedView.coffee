@@ -19,6 +19,7 @@ module.exports = class EmailVerifiedView extends RootView
     @listenTo @state, 'change', @render
     @listenTo @user, 'email-verify-success', ->
       @state.set { verifyStatus: 'success' }
+      me.fetch()
     @listenTo @user, 'email-verify-error', ->
       @state.set { verifyStatus: 'error' }
 
