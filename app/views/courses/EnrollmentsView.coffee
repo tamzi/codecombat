@@ -96,7 +96,7 @@ module.exports = class EnrollmentsView extends RootView
     if input isnt "" and (parseFloat(input) isnt parseInt(input) or _.isNaN parseInt(input))
       @$('#students-input').val(@state.get('numberOfStudents'))
     else
-      @state.set('numberOfStudents', Math.max(parseInt(@$('#students-input').val()) or 0, 0))
+      @state.set({'numberOfStudents', Math.max(parseInt(@$('#students-input').val()) or 0, 0)}, {silent: true}) # do not re-render
 
   numberOfStudentsIsValid: -> 0 < @get('numberOfStudents') < 100000
 

@@ -11,6 +11,7 @@ describe 'EnrollmentsView', ->
   beforeEach (done) ->
     me.set('anonymous', false)
     me.set('role', 'teacher')
+    me.set('enrollmentRequestSent', false)
     @view = new EnrollmentsView()
     
     # Make three classrooms, sharing users from a pool of 10, 5 of which are enrolled
