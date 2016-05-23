@@ -46,6 +46,7 @@ module.exports = class EnrollmentsView extends RootView
     @debouncedRender = _.debounce @render, 0
     @listenTo @prepaids, 'all', -> @state.set('prepaidGroups', @prepaids.groupBy((p) -> p.status()))
     @listenTo(@state, 'all', @debouncedRender)
+    @listenTo(me, 'change:enrollmentRequestSent', @debouncedRender)
 
   onceClassroomsSync: ->
     for classroom in @classrooms.models
