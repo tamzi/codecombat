@@ -44,7 +44,7 @@ module.exports = class EnrollmentsView extends RootView
     @prepaids.comparator = '_id'
     @supermodel.trackRequest @prepaids.fetchByCreator(me.id)
     @debouncedRender = _.debounce @render, 0
-    @listenTo @prepaids, 'all', -> @state.set('prepaidGroups', @prepaids.groupBy((p) -> p.status()))
+    @listenTo @prepaids, 'sync', -> @state.set('prepaidGroups', @prepaids.groupBy((p) -> p.status()))
     @listenTo(@state, 'all', @debouncedRender)
     @listenTo(me, 'change:enrollmentRequestSent', @debouncedRender)
 
@@ -103,3 +103,6 @@ module.exports = class EnrollmentsView extends RootView
   onClickEnrollStudentsButton: ->
     modal = new ActivateLicensesModal({ selectedUsers: @notEnrolledUsers, users: @members })
     @openModalView(modal)
+    modal.once 'hidden', =>
+      @prepaids.add(modal.prepaids.models, { merge: true })
+      @debouncedRender() # Because one changed model does not a collection update make
