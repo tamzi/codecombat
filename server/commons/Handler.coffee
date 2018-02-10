@@ -17,6 +17,7 @@ module.exports = class Handler
   modelClass: null
   privateProperties: []
   editableProperties: []
+  adminEditableProperties: []
   postEditableProperties: []
   jsonSchema: {}
   waterfallFunctions: []
@@ -27,6 +28,7 @@ module.exports = class Handler
     @privateProperties = @modelClass?.privateProperties or @privateProperties or []
     @editableProperties = @modelClass?.editableProperties or @editableProperties or []
     @postEditableProperties = @modelClass?.postEditableProperties or @postEditableProperties or []
+    @adminEditableProperties = @modelClass?.adminEditableProperties or @adminEditableProperties or []
     @jsonSchema = @modelClass?.jsonSchema or @jsonSchema or {}
 
   # subclasses should override these methods
@@ -59,6 +61,7 @@ module.exports = class Handler
   formatEntity: (req, document) -> document?.toObject()
   getEditableProperties: (req, document) ->
     props = @editableProperties.slice()
+    props = props.concat @adminEditableProperties if req.user?.isAdmin()
     isBrandNew = req.method is 'POST' and not req.body.original
     props = props.concat @postEditableProperties if isBrandNew
 
@@ -82,27 +85,28 @@ module.exports = class Handler
   sendBadInputError: (res, message) -> errors.badInput(res, message)
   sendPaymentRequiredError: (res, message) -> errors.paymentRequired(res, message)
   sendDatabaseError: (res, err) ->
+    if err instanceof errors.NetworkError
+      return res.status(err.code).send(err.toJSON())
     return @sendError(res, err.code, err.response) if err?.response and err?.code
-    log.error "Database error, #{err}"
     errors.serverError(res, 'Database error, ' + err)
 
   sendError: (res, code, message) ->
     errors.custom(res, code, message)
 
   sendSuccess: (res, message='{}') ->
-    res.send 200, message
+    res.status(200).send message
     res.end()
 
   sendCreated: (res, message='{}') ->
-    res.send 201, message
+    res.status(201).send message
     res.end()
 
   sendAccepted: (res, message='{}') ->
-    res.send 202, message
+    res.status(202).send message
     res.end()
 
   sendNoContent: (res) ->
-    res.send 204
+    res.sendStatus 204
     res.end()
 
   # generic handlers
@@ -153,12 +157,14 @@ module.exports = class Handler
         else
           projection = {}
           projection[field] = 1 for field in req.query.project.split(',')
+      projection?.restricted = 1
       for filter in filters
         callback = (err, results) =>
           return @sendDatabaseError(res, err) if err
           for r in results.results ? results
             obj = r.obj ? r
             continue if obj in matchedObjects  # TODO: probably need a better equality check
+            continue if obj.get('restricted') and not req.user?.isAdmin() and not (obj.get('restricted') is 'code-play' and req.features.codePlay)
             matchedObjects.push obj
           filters.pop()  # doesn't matter which one
           unless filters.length
@@ -225,8 +231,8 @@ module.exports = class Handler
   getByRelationship: (req, res, args...) ->
     # this handler should be overwritten by subclasses
     if @modelClass.schema.is_patchable
-      return @getPatchesFor(req, res, args[0]) if req.route.method is 'get' and args[1] is 'patches'
-      return @setWatching(req, res, args[0]) if req.route.method is 'put' and args[1] is 'watch'
+      return @getPatchesFor(req, res, args[0]) if req.method is 'GET' and args[1] is 'patches'
+      return @setWatching(req, res, args[0]) if req.method is 'PUT' and args[1] is 'watch'
     return @sendNotFoundError(res)
 
   getNamesByIDs: (req, res) ->
@@ -362,8 +368,15 @@ module.exports = class Handler
       return @sendNotFoundError(res) unless document?
       return @sendForbiddenError(res) unless @hasAccessToDocument(req, document)
       @doWaterfallChecks req, document, (err, document) =>
-        return if err is true
-        return @sendError(res, err.code, err.res) if err
+        if err is true
+          # Unknown why this was done; let's log it to see when this happens.
+          console.error "Ignoring some true waterfall error"
+          return
+        if err
+          if err.code? or err?.res
+            return @sendError(res, err.code, err.res) if err
+          console.error "Ill-formatted error in waterfall checks: #{err.stack}"
+          return @sendError(res, 500, 'Internal server error (waterfall)') if err
         @saveChangesToDocument req, document, (err) =>
           return @sendBadInputError(res, err.errors) if err?.valid is false
           return @sendDatabaseError(res, err) if err
@@ -391,7 +404,7 @@ module.exports = class Handler
   onPutSuccess: (req, doc) ->
 
   ###
-  TODO: think about pulling some common stuff out of postFirstVersion/postNewVersion
+  TODO: think about pulling some common stuff out of postFirstVersion / postNewVersion
   into a postVersion if we can figure out the breakpoints?
   ..... actually, probably better would be to do the returns with throws instead
   and have a handler which turns them into status codes and messages
@@ -456,7 +469,7 @@ module.exports = class Handler
         parentDocument.makeNewMajorVersion(updatedObject, done)
 
   notifyWatchersOfChange: (editor, changedDocument, editPath) ->
-    docLink = "http://codecombat.com#{editPath}"
+    docLink = "http://codecombat.com#{editPath}" # TODO: Dynamically generate URL with server/commons/urls.makeHostUrl
     @sendChangedSlackMessage creator: editor, target: changedDocument, docLink: docLink
     watchers = changedDocument.get('watchers') or []
     # Don't send these emails to the person who submitted the patch, or to Nick, George, or Scott.
@@ -467,6 +480,7 @@ module.exports = class Handler
         @notifyWatcherOfChange editor, watcher, changedDocument, editPath
 
   notifyWatcherOfChange: (editor, watcher, changedDocument, editPath) ->
+    return if not watcher.get('email')
     context =
       email_id: sendwithus.templates.change_made_notify_watcher
       recipient:
@@ -475,14 +489,13 @@ module.exports = class Handler
       email_data:
         doc_name: changedDocument.get('name') or '???'
         submitter_name: editor.get('name') or '???'
-        doc_link: if editPath then "http://codecombat.com#{editPath}" else null
+        doc_link: if editPath then "http://codecombat.com#{editPath}" else null # TODO: Dynamically generate URL with server/commons/urls.makeHostUrl
         commit_message: changedDocument.get('commitMessage')
     sendwithus.api.send context, (err, result) ->
 
   sendChangedSlackMessage: (options) ->
     message = "#{options.creator.get('name')} saved a change to #{options.target.get('name')}: #{options.target.get('commitMessage') or '(no commit message)'} #{options.docLink}"
-    rooms = if /Diplomat submission/.test(message) then ['dev-feed'] else ['dev-feed', 'artisans']
-    slack.sendSlackMessage message, rooms
+    slack.sendSlackMessage message, ['artisans']
 
   makeNewInstance: (req) ->
     model = new @modelClass({})
@@ -494,7 +507,8 @@ module.exports = class Handler
       model.set 'watchers', watchers
     model
 
-  validateDocumentInput: (input) ->
+  validateDocumentInput: (input, req) ->
+    # NOTE: req may not be included
     tv4 = require('tv4').tv4
     res = tv4.validateMultiple(input, @jsonSchema)
     res
@@ -508,12 +522,14 @@ module.exports = class Handler
     idOrSlug = idOrSlug+''
     if Handler.isID(idOrSlug)
       query = @modelClass.findById(idOrSlug)
-    else
+    else if @modelClass.schema.uses_coco_names
       if not idOrSlug or idOrSlug is 'undefined'
         console.error "Bad request trying to fetching the slug: #{idOrSlug} for #{@modelClass.collection?.name}"
         console.trace()
         return done null, null
       query = @modelClass.findOne {slug: idOrSlug}
+    else
+      return done(null, null)
     query.select projection if projection
     query.exec (err, document) ->
       done(err, document)
@@ -543,7 +559,7 @@ module.exports = class Handler
     # so that validation doesn't get hung up on Date objects in the documents.
     delete obj.dateCreated
 
-    validation = @validateDocumentInput(obj)
+    validation = @validateDocumentInput(obj, req)
     return done(validation) unless validation.valid
 
     document.save (err) -> done(err)

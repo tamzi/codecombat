@@ -1,6 +1,7 @@
 SuperModel = require 'models/SuperModel'
 User = require 'models/User'
-ComponentsCollection = require 'collections/ComponentsCollection'
+LevelComponents = require 'collections/LevelComponents'
+factories = require 'test/app/factories'
 
 describe 'SuperModel', ->
   
@@ -52,10 +53,66 @@ describe 'SuperModel', ->
 
     it 'also loads collections', ->
       s = new SuperModel()
-      c = new ComponentsCollection()
+      c = new LevelComponents()
       s.loadModel(c)
       request = jasmine.Ajax.requests.mostRecent()
       expect(request).toBeDefined()
+
+    xdescribe 'timeout handling', ->
+      beforeEach ->
+        jasmine.clock().install()
+      afterEach ->
+        jasmine.clock().uninstall()
+
+      it 'automatically retries stalled requests', ->
+        s = new SuperModel()
+        m = new User({_id: '12345'})
+        s.loadModel(m)
+        timeUntilRetry = 5000
+
+        # Retry request 5 times
+        for timesTried in [1..5]
+          expect(s.failed).toBeFalsy()
+          expect(s.resources[1].loadsAttempted).toBe(timesTried)
+          expect(jasmine.Ajax.requests.all().length).toBe(timesTried)
+          jasmine.clock().tick(timeUntilRetry)
+          timeUntilRetry *= 1.5
+
+        # And then stop retrying
+        expect(s.resources[1].loadsAttempted).toBe(5)
+        expect(jasmine.Ajax.requests.all().length).toBe(5)
+        expect(s.failed).toBe(true)
+
+      it 'stops retrying once the model loads', (done) ->
+        s = new SuperModel()
+        m = new User({_id: '12345'})
+        s.loadModel(m)
+        timeUntilRetry = 5000
+        # Retry request 2 times
+        for timesTried in [1..2]
+          expect(s.failed).toBeFalsy()
+          expect(s.resources[1].loadsAttempted).toBe(timesTried)
+          expect(jasmine.Ajax.requests.all().length).toBe(timesTried)
+          jasmine.clock().tick(timeUntilRetry)
+          timeUntilRetry *= 1.5
+
+        # Respond to the third reqest
+        expect(s.finished()).toBeFalsy()
+        expect(s.failed).toBeFalsy()
+        request = jasmine.Ajax.requests.mostRecent()
+        request.respondWith({status: 200, responseText: JSON.stringify(factories.makeUser({ _id: '12345' }).attributes)})
+
+        _.defer ->
+          expect(s.finished()).toBe(true)
+          expect(s.failed).toBeFalsy()
+
+          # It shouldn't send any more requests after loading
+          expect(s.resources[1].loadsAttempted).toBe(3)
+          expect(jasmine.Ajax.requests.all().length).toBe(3)
+          jasmine.clock().tick(60000)
+          expect(s.resources[1].loadsAttempted).toBe(3)
+          expect(jasmine.Ajax.requests.all().length).toBe(3)
+          done()
 
   describe 'events', ->
     it 'triggers "loaded-all" when finished', (done) ->
@@ -74,11 +131,11 @@ describe 'SuperModel', ->
     it 'combines models which are fetched from multiple sources', ->
       s = new SuperModel()
 
-      c1 = new ComponentsCollection()
+      c1 = new LevelComponents()
       c1.url = '/db/level.component?v=1'
       s.loadCollection(c1, 'components')
 
-      c2 = new ComponentsCollection()
+      c2 = new LevelComponents()
       c2.url = '/db/level.component?v=2'
       s.loadCollection(c2, 'components')
 

@@ -17,20 +17,23 @@ module.exports.simulatorIsTooOld = (req, res) ->
   return false if clientSimulator?.version >= SIMULATOR_VERSION
   message = "Old simulator version #{clientSimulator?.version}, need to clear cache and get version #{SIMULATOR_VERSION}."
   log.debug "400: #{message}"
-  res.send 400, message
+  res.status(400).send message
   res.end()
   true
 
 
 module.exports.sendResponseObject = (res, object) ->
-  res.setHeader('Content-Type', 'application/json')
-  res.send(object)
-  res.end()
+  try
+    res.setHeader('Content-Type', 'application/json')
+    res.send(object)
+    res.end()
+  catch error
+    log.error("ERROR in #{res.req.method} #{res.req.url}:\n" + error.stack)
 
 module.exports.formatSessionInformation = (session) ->
   heroID = if session.team is 'ogres' then 'hero-placeholder-1' else 'hero-placeholder'
   submittedCode = {}
-  submittedCode[heroID] = plan: LZString.compressToUTF16(session.submittedCode[heroID]?.plan ? '')
+  submittedCode[heroID] = plan: LZString.compressToUTF16(session.submittedCode?[heroID]?.plan ? '')
 
   _id: session._id
   sessionID: session._id

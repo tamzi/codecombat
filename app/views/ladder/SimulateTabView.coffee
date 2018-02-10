@@ -11,32 +11,21 @@ module.exports = class SimulateTabView extends CocoView
   events:
     'click #simulate-button': 'onSimulateButtonClick'
 
-  constructor: (options) ->
-    super(options)
+  initialize: ->
     @simulatorsLeaderboardData = new SimulatorsLeaderboardData(me)
     @simulatorsLeaderboardDataRes = @supermodel.addModelResource(@simulatorsLeaderboardData, 'top_simulators', {cache: false})
     @simulatorsLeaderboardDataRes.load()
-    require 'vendor/aether-javascript'
-    require 'vendor/aether-python'
-    require 'vendor/aether-coffeescript'
-    require 'vendor/aether-lua'
-    require 'vendor/aether-java'
-    require 'vendor/aether-clojure'
-    require 'vendor/aether-io'
+    require 'bower_components/aether/build/javascript'
+    require 'bower_components/aether/build/python'
+    require 'bower_components/aether/build/coffeescript'
+    require 'bower_components/aether/build/lua'
+    require 'bower_components/aether/build/java'
 
   onLoaded: ->
     super()
     @render()
-    if (document.location.hash is '#simulate' or @options.level.get('type') is 'course-ladder') and not @simulator
+    if not @simulator and (document.location.hash is '#simulate' or @options.level.get('slug') not in ['ace-of-coders', 'zero-sum'])
       @startSimulating()
-
-  getRenderData: ->
-    ctx = super()
-    ctx.simulationStatus = @simulationStatus
-    ctx.simulatorsLeaderboardData = @simulatorsLeaderboardData
-    ctx.numberOfGamesInQueue = @simulatorsLeaderboardData.numberOfGamesInQueue
-    ctx._ = _
-    ctx
 
   afterRender: ->
     super()
@@ -147,6 +136,7 @@ class SimulatorsLeaderboardData extends CocoClass
     return me.id in (user.id for user in @topSimulators.models)
 
   nearbySimulators: ->
+    return [] if not @playersAbove?.models
     l = []
     above = @playersAbove.models
     l = l.concat(above)

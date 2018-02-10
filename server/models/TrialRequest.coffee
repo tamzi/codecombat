@@ -1,4 +1,3 @@
-closeIO = require '../lib/closeIO'
 log = require 'winston'
 mongoose = require 'mongoose'
 config = require '../../server_config'
@@ -36,4 +35,5 @@ TrialRequestSchema.statics.editableProperties = [
 ]
 
 TrialRequestSchema.statics.jsonSchema = jsonSchema
+TrialRequestSchema.index({'applicant': 1}, {name: 'applicant'})
 module.exports = TrialRequest = mongoose.model 'trial.request', TrialRequestSchema, 'trial.requests'

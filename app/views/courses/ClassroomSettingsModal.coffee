@@ -1,3 +1,4 @@
+require('app/styles/courses/classroom-settings-modal.sass')
 Classroom = require 'models/Classroom'
 ModalView = require 'views/core/ModalView'
 template = require 'templates/courses/classroom-settings-modal'
@@ -7,17 +8,15 @@ errors = require 'core/errors'
 module.exports = class ClassroomSettingsModal extends ModalView
   id: 'classroom-settings-modal'
   template: template
+  schema: require 'schemas/models/classroom.schema'
 
   events:
     'click #save-settings-btn': 'onSubmitForm'
+    'click #update-courses-btn': 'onClickUpdateCoursesButton'
     'submit form': 'onSubmitForm'
 
   initialize: (options={}) ->
     @classroom = options.classroom or new Classroom()
-    if @classroom.isNew()
-      application.tracker?.trackEvent 'Create new class', category: 'Courses'
-    else
-      application.tracker?.trackEvent 'Classroom started edit settings', category: 'Courses', classroomID: @classroom.id
 
   afterRender: ->
     super()
@@ -35,6 +34,7 @@ module.exports = class ClassroomSettingsModal extends ModalView
     else
       forms.setErrorToProperty(form, 'language', $.i18n.t('common.required_field'))
       return
+
     @classroom.set(attrs)
     schemaErrors = @classroom.getValidationErrors()
     if schemaErrors
@@ -53,3 +53,15 @@ module.exports = class ClassroomSettingsModal extends ModalView
       button.text(@oldButtonText).attr('disabled', false)
       errors.showNotyNetworkError(jqxhr)
     @listenToOnce @classroom, 'sync', @hide
+    window.tracker?.trackEvent "Teachers Edit Class Saved", category: 'Teachers', classroomID: @classroom.id, ['Mixpanel']
+
+  onClickUpdateCoursesButton: ->
+    @$('#update-courses-btn').attr('disabled', true)
+    Promise.resolve(@classroom.updateCourses())
+    .then =>
+      @$('#update-courses-btn').attr('disabled', false)
+      noty { text: 'Updated', timeout: 2000 }
+    .catch (e) =>
+      console.log 'e', e
+      @$('#update-courses-btn').attr('disabled', false)
+      noty { text: e.responseJSON?.message or e.responseText or 'Error!', type: 'error', timeout: 5000 }

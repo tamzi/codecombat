@@ -1,8 +1,10 @@
+require('app/styles/modal/save-version-modal.sass')
 ModalView = require 'views/core/ModalView'
 template = require 'templates/editor/modal/save-version-modal'
 DeltaView = require 'views/editor/DeltaView'
 Patch = require 'models/Patch'
 forms = require 'core/forms'
+modelDeltas = require 'lib/modelDeltas'
 
 module.exports = class SaveVersionModal extends ModalView
   id: 'save-version-modal'
@@ -46,9 +48,10 @@ module.exports = class SaveVersionModal extends ModalView
     }
 
   submitPatch: ->
+    @savingPatchError = false
     forms.clearFormAlerts @$el
     patch = new Patch()
-    patch.set 'delta', @model.getDelta()
+    patch.set 'delta', modelDeltas.getDelta(@model)
     patch.set 'commitMessage', @$el.find('#commit-message').val()
     patch.set 'target', {
       'collection': _.string.underscored @model.constructor.className
@@ -60,8 +63,10 @@ module.exports = class SaveVersionModal extends ModalView
     return unless res
     @enableModalInProgress(@$el)
 
-    res.error =>
+    res.error (jqxhr) =>
       @disableModalInProgress(@$el)
+      @savingPatchError = jqxhr.responseJSON?.message or 'Unknown error.'
+      @renderSelectors '.save-error-area'
 
     res.success =>
       @hide()

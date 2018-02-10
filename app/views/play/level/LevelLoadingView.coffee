@@ -1,6 +1,9 @@
+require('app/styles/play/level/level-loading-view.sass')
 CocoView = require 'views/core/CocoView'
-template = require 'templates/play/level/level_loading'
+template = require 'templates/play/level/level-loading-view'
+ace = require('lib/aceContainer')
 utils = require 'core/utils'
+aceUtils = require 'core/aceUtils'
 SubscribeModal = require 'views/core/SubscribeModal'
 
 module.exports = class LevelLoadingView extends CocoView
@@ -15,8 +18,9 @@ module.exports = class LevelLoadingView extends CocoView
   subscriptions:
     'level:loaded': 'onLevelLoaded'  # If Level loads after level loading view.
     'level:session-loaded': 'onSessionLoaded'
-    'level:subscription-required': 'onSubscriptionRequired'  # If they'd need a subscription to start playing.
-    'level:course-membership-required': 'onCourseMembershipRequired'  # If they'd need a subscription to start playing.
+    'level:subscription-required': 'onSubscriptionRequired'  # If they'd need a subscription.
+    'level:course-membership-required': 'onCourseMembershipRequired'  # If they need to be added to a course.
+    'level:license-required': 'onLicenseRequired' # If they need a license.
     'subscribe-modal:subscribed': 'onSubscribed'
 
   shortcuts:
@@ -24,24 +28,26 @@ module.exports = class LevelLoadingView extends CocoView
 
   afterRender: ->
     super()
-    @$el.find('.tip.rare').remove() if _.random(1, 10) < 9
-    tips = @$el.find('.tip').addClass('to-remove')
-    tip = _.sample(tips)
-    $(tip).removeClass('to-remove').addClass('secret')
-    @$el.find('.to-remove').remove()
+    unless @level?.get('loadingTip')
+      @$el.find('.tip.rare').remove() if _.random(1, 10) < 9
+      tips = @$el.find('.tip').addClass('to-remove')
+      tip = _.sample(tips)
+      $(tip).removeClass('to-remove').addClass('secret')
+      @$el.find('.to-remove').remove()
     @onLevelLoaded level: @options.level if @options.level?.get('goals')  # If Level was already loaded.
+    @configureACEEditors()
+
+  configureACEEditors: ->
+    codeLanguage = @session?.get('codeLanguage') or me.get('aceConfig')?.language or 'python'
+    oldEditor.destroy() for oldEditor in @aceEditors ? []
+    @aceEditors = []
+    aceEditors = @aceEditors
+    @$el.find('pre:has(code[class*="lang-"])').each ->
+      aceEditor = aceUtils.initializeACE @, codeLanguage
+      aceEditors.push aceEditor
 
   afterInsert: ->
     super()
-    _.defer =>
-      return if @destroyed
-      # Make sure that we are as tall now as we will be when the canvas wrapper is resized to the right height.
-      currentCanvasHeight = 589
-      canvasAspectRatio = 924 / 589
-      eventualCanvasWidth = $('#canvas-wrapper').outerWidth()
-      eventualCanvasHeight = eventualCanvasWidth / canvasAspectRatio
-      newHeight = Math.max 769, @$el.outerHeight() + eventualCanvasHeight - currentCanvasHeight + 2
-      @$el.addClass('manually-sized').css('height', newHeight)
 
   onLevelLoaded: (e) ->
     return if @level
@@ -59,19 +65,28 @@ module.exports = class LevelLoadingView extends CocoView
     goalList = goalContainer.find('ul')
     goalCount = 0
     for goalID, goal of @level.get('goals') when (not goal.team or goal.team is (e.team or 'humans')) and not goal.hiddenGoal
+      continue if goal.optional and @level.isType('course')
       name = utils.i18n goal, 'name'
-      goalList.append $('<li>' + name + '</li>')
+      goalList.append $('<li>').text(name)
       ++goalCount
+    @goalHeaderTransationKey = 'play_level.goals'
+    if @level.get('assessment')
+      @goalHeaderTransationKey = 'play_level.challenge_level_goals'
     if goalCount
       goalContainer.removeClass('secret')
       if goalCount is 1
-        goalContainer.find('.panel-heading').text $.i18n.t 'play_level.goal'  # Not plural
+        if @level.get('assessment')
+           @goalHeaderTransationKey = 'play_level.challenge_level_goal'  # Not plural
+        else
+          @goalHeaderTransationKey = 'play_level.goal'  # Not plural
+    goalContainer.find('.goals-title').text $.i18n.t @goalHeaderTransationKey
 
   prepareTip: ->
     tip = @$el.find('.tip')
     if @level.get('loadingTip')
       loadingTip = utils.i18n @level.attributes, 'loadingTip'
-      tip.text(loadingTip)
+      loadingTip = marked(loadingTip)
+      tip.html(loadingTip).removeAttr('data-i18n')
     tip.removeClass('secret')
 
   prepareIntro: ->
@@ -88,7 +103,7 @@ module.exports = class LevelLoadingView extends CocoView
 
   finishShowingReady: =>
     return if @destroyed
-    showIntro = @getQueryVariable('intro')
+    showIntro = utils.getQueryVariable('intro')
     autoUnveil = not showIntro and (@options.autoUnveil or @session?.get('state').complete)
     if autoUnveil
       @startUnveiling()
@@ -157,6 +172,7 @@ module.exports = class LevelLoadingView extends CocoView
   resize: ->
     maxHeight = $('#page-container').outerHeight(true)
     minHeight = $('#code-area').outerHeight(true)
+    minHeight -= 20
     @$el.css height: maxHeight
     @$loadingDetails.css minHeight: minHeight, maxHeight: maxHeight
     if @intro
@@ -168,7 +184,7 @@ module.exports = class LevelLoadingView extends CocoView
     @playSound 'loading-view-unveil', 0.5
     @$el.find('.left-wing').css left: '-100%', backgroundPosition: 'right -400px top 0'
     @$el.find('.right-wing').css right: '-100%', backgroundPosition: 'left -400px top 0'
-    $('#level-footer-background').detach().appendTo('#page-container').slideDown(duration)
+    $('#level-footer-background').detach().appendTo('#page-container').slideDown(duration) unless @level?.isType('web-dev')
 
   unveilIntro: =>
     return if @destroyed or not @intro or @unveiled
@@ -183,9 +199,11 @@ module.exports = class LevelLoadingView extends CocoView
         #{problem.category} - #{problem.score} points
       """, sanitize: false
     else
-      html = marked utils.filterMarkdownCodeLanguages(utils.i18n(@intro, 'body'))
+      language = @session?.get('codeLanguage')
+      html = marked utils.filterMarkdownCodeLanguages(utils.i18n(@intro, 'body'), language)
     @$el.find('.intro-doc').removeClass('hidden').find('.intro-doc-content').html html
     @resize()
+    @configureACEEditors()
 
   onUnveilEnded: =>
     return if @destroyed
@@ -197,12 +215,20 @@ module.exports = class LevelLoadingView extends CocoView
     @resize()
 
   onSubscriptionRequired: (e) ->
-    @$el.find('.level-loading-goals, .tip, .load-progress').hide()
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
     @$el.find('.subscription-required').show()
 
   onCourseMembershipRequired: (e) ->
-    @$el.find('.level-loading-goals, .tip, .load-progress').hide()
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
     @$el.find('.course-membership-required').show()
+
+  onLicenseRequired: (e) ->
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
+    @$el.find('.license-required').show()
+
+  onLoadError: (resource) ->
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
+    @$el.find('.could-not-load').show()
 
   onClickStartSubscription: (e) ->
     @openModalView new SubscribeModal()

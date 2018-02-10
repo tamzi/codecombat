@@ -48,6 +48,7 @@ sudo mount --bind /node_modules /vagrant/node_modules
 # prepare
 find /vagrant/app -type f -exec dos2unix {} \;
 find /vagrant/vendor -type f -exec dos2unix {} \;
+find /vagrant/scripts/vagrant -type f -exec dos2unix {} \;
 sudo chown -R vagrant:vagrant /home/vagrant
 
 # install npm modules
@@ -61,4 +62,5 @@ sudo apt-get -y install --no-install-recommends mongodb-org
 
 # populate mongo
 echo "populating mongodb..."
+chmod a+x /vagrant/scripts/vagrant/core/fillMongo.sh
 exec /vagrant/scripts/vagrant/core/fillMongo.sh

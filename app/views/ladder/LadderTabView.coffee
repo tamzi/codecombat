@@ -1,3 +1,4 @@
+require('app/styles/play/ladder/ladder-tab-view.sass')
 CocoView = require 'views/core/CocoView'
 CocoClass = require 'core/CocoClass'
 Level = require 'models/Level'
@@ -7,7 +8,9 @@ User = require 'models/User'
 LeaderboardCollection  = require 'collections/LeaderboardCollection'
 {teamDataFromLevel} = require './utils'
 ModelModal = require 'views/modal/ModelModal'
-require 'vendor/d3'
+require 'd3/d3.js'
+CreateAccountModal = require 'views/core/CreateAccountModal'
+utils = require 'core/utils'
 
 HIGHEST_SCORE = 1000000
 
@@ -21,6 +24,7 @@ module.exports = class LadderTabView extends CocoView
     'click .name-col-cell': 'onClickPlayerName'
     'click .spectate-cell': 'onClickSpectateCell'
     'click .load-more-ladder-entries': 'onLoadMoreLadderEntries'
+    'click [data-toggle="coco-modal"][data-target="core/CreateAccountModal"]': 'openCreateAccountModal'
 
     # Refactored, to-reimplement
 #  subscriptions:
@@ -29,14 +33,20 @@ module.exports = class LadderTabView extends CocoView
 #    'auth:logged-in-with-facebook': 'onConnectedWithFacebook'
 #    'auth:logged-in-with-gplus': 'onConnectedWithGPlus'
 
-  constructor: (options, @level, @sessions) ->
-    super(options)
+  initialize: (options, @level, @sessions) ->
     @teams = teamDataFromLevel @level
-    @leaderboards = {}
+    @leaderboards = []
     @refreshLadder()
+
+    @capitalize = _.string.capitalize
+
     # Trying not loading the FP/G+ stuff for now to see if anyone complains they were using it so we can have just two columns.
     #@socialNetworkRes = @supermodel.addSomethingResource('social_network_apis', 0)
     #@checkFriends()
+
+  openCreateAccountModal: (e) ->
+    e.stopPropagation()
+    @openModalView new CreateAccountModal()
 
   checkFriends: ->
     return  # Skipping for now
@@ -51,7 +61,8 @@ module.exports = class LadderTabView extends CocoView
     FB.getLoginStatus (response) =>
       return if @destroyed
       @facebookStatus = response.status
-      @loadFacebookFriends() if @facebookStatus is 'connected'
+      @onFacebook = view.facebookStatus is 'connected'
+      @loadFacebookFriends() if @onFacebook
       @fbStatusRes.markLoaded()
 
     if application.gplusHandler.loggedIn is undefined
@@ -102,6 +113,7 @@ module.exports = class LadderTabView extends CocoView
       friend.otherTeam = if friend.team is 'humans' then 'ogres' else 'humans'
       friend.imageSource = "http://graph.facebook.com/#{friend.facebookID}/picture"
     @facebookFriendSessions = result
+    @friends = @consolidateFriends()
     @render() # because the ladder tab renders before waiting for fb to finish
 
   # GOOGLE PLUS
@@ -115,6 +127,7 @@ module.exports = class LadderTabView extends CocoView
 
   gplusSessionStateLoaded: ->
     if application.gplusHandler.loggedIn
+      @onGPlus = true
       #@addSomethingToLoad('gplus_friends')
       @gpFriendRes = @supermodel.addSomethingResource('gplus_friends', 0)
       @gpFriendRes.load()
@@ -145,6 +158,7 @@ module.exports = class LadderTabView extends CocoView
       friend.otherTeam = if friend.team is 'humans' then 'ogres' else 'humans'
       friend.imageSource = friendsMap[friend.gplusID].image.url
     @gplusFriendSessions = result
+    @friends = @consolidateFriends()
     @render() # because the ladder tab renders before waiting for gplus to finish
 
   # LADDER LOADING
@@ -154,13 +168,14 @@ module.exports = class LadderTabView extends CocoView
     return if not @options.league and (new Date() - 2 * 60 * 1000 < @lastRefreshTime)
     @lastRefreshTime = new Date()
     @supermodel.resetProgress()
-    @ladderLimit ?= parseInt @getQueryVariable('top_players', if @options.league then 100 else 20)
+    @ladderLimit ?= parseInt utils.getQueryVariable('top_players', if @options.league then 100 else 20)
     for team in @teams
       if oldLeaderboard = @leaderboards[team.id]
         @supermodel.removeModelResource oldLeaderboard
         oldLeaderboard.destroy()
       teamSession = _.find @sessions.models, (session) -> session.get('team') is team.id
       @leaderboards[team.id] = new LeaderboardData(@level, team.id, teamSession, @ladderLimit, @options.league)
+      team.leaderboard = @leaderboards[team.id]
       @leaderboardRes = @supermodel.addModelResource(@leaderboards[team.id], 'leaderboard', {cache: false}, 3)
       @leaderboardRes.load()
 
@@ -173,27 +188,11 @@ module.exports = class LadderTabView extends CocoView
       histogramData = null
       $.when(
         level = "#{@level.get('original')}.#{@level.get('version').major}"
-        url = "/db/level/#{level}/histogram_data?team=#{team.name.toLowerCase()}"
+        url = "/db/level/#{level}/histogram_data?team=#{team.name.toLowerCase()}&levelSlug=#{@level.get('slug')}"
         url += '&leagues.leagueID=' + @options.league.id if @options.league
         $.get url, (data) -> histogramData = data
       ).then =>
         @generateHistogram(histogramWrapper, histogramData, team.name.toLowerCase()) unless @destroyed
-
-  getRenderData: ->
-    ctx = super()
-    ctx.level = @level
-    ctx.link = "/play/level/#{@level.get('name')}"
-    ctx.teams = @teams
-    team.leaderboard = @leaderboards[team.id] for team in @teams
-    ctx.levelID = @levelID
-    ctx.friends = @consolidateFriends()
-    ctx.onFacebook = @facebookStatus is 'connected'
-    ctx.onGPlus = application.gplusHandler.loggedIn
-    ctx.capitalize = _.string.capitalize
-    ctx.league = @options.league
-    ctx._ = _
-    ctx.moment = moment
-    ctx
 
   generateHistogram: (histogramElement, histogramData, teamName) ->
     #renders twice, hack fix
@@ -260,11 +259,15 @@ module.exports = class LadderTabView extends CocoView
 
     message = "#{histogramData.length} players"
     if @leaderboards[teamName].session?
+      # TODO: i18n for these messages
       if @options.league
         # TODO: fix server handler to properly fetch myRank with a leagueID
         message = "#{histogramData.length} players in league"
       else if @leaderboards[teamName].myRank <= histogramData.length
         message = "##{@leaderboards[teamName].myRank} of #{histogramData.length}"
+        message += "+" if histogramData.length >= 100000
+      else if @leaderboards[teamName].myRank is 'unknown'
+        message = "#{if histogramData.length >= 100000 then '100,000+' else histogramData.length} players"
       else
         message = 'Rank your session!'
     svg.append('g')
@@ -350,7 +353,7 @@ module.exports.LeaderboardData = LeaderboardData = class LeaderboardData extends
         promises.push @playersBelow.fetch cache: false
         level = "#{@level.get('original')}.#{@level.get('version').major}"
         success = (@myRank) =>
-        loadURL = "/db/level/#{level}/leaderboard_rank?scoreOffset=#{score}&team=#{@team}"
+        loadURL = "/db/level/#{level}/leaderboard_rank?scoreOffset=#{score}&team=#{@team}&levelSlug=#{@level.get('slug')}"
         loadURL += '&leagues.leagueID=' + @league.id if @league
         promises.push $.ajax(loadURL, cache: false, success: success)
     @promise = $.when(promises...)
@@ -385,7 +388,9 @@ module.exports.LeaderboardData = LeaderboardData = class LeaderboardData extends
     l.reverse()
     l.push @session
     l = l.concat(@playersBelow.models)
-    if @myRank
+    if @myRank is 'unknown'
+      session.rank ?= '' for session in l
+    else if @myRank
       startRank = @myRank - 4
       session.rank = startRank + i for session, i in l
     l

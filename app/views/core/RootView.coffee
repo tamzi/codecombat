@@ -8,6 +8,7 @@ locale = require 'locale/locale'
 
 Achievement = require 'models/Achievement'
 AchievementPopup = require 'views/core/AchievementPopup'
+errors = require 'core/errors'
 utils = require 'core/utils'
 
 # TODO remove
@@ -23,6 +24,7 @@ module.exports = class RootView extends CocoView
 
   events:
     'click #logout-button': 'logoutAccount'
+    'click #nav-stop-spying-button': 'stopSpying'
     'change .language-dropdown': 'onLanguageChanged'
     'click .toggle-fullscreen': 'toggleFullscreen'
     'click .signup-button': 'onClickSignupButton'
@@ -30,10 +32,11 @@ module.exports = class RootView extends CocoView
     'click a': 'onClickAnchor'
     'click button': 'toggleModal'
     'click li': 'toggleModal'
+    'treema-error': 'onTreemaError'
+    'click [data-i18n]': 'onClickTranslatedElement'
 
   subscriptions:
     'achievements:new': 'handleNewAchievements'
-    'modal:open-modal-view': 'onOpenModalView'
 
   shortcuts:
     'ctrl+shift+a': 'navigateToAdmin'
@@ -44,6 +47,7 @@ module.exports = class RootView extends CocoView
     return if achievement.get('collection') is 'level.sessions' and not achievement.get('query')?.team
     #return if @isIE()  # Some bugs in IE right now, TODO fix soon!  # Maybe working now with not caching achievement fetches in CocoModel?
     return if window.serverConfig.picoCTF
+    return if achievement.get('hidden')
     new AchievementPopup achievement: achievement, earnedAchievement: earnedAchievement
 
   handleNewAchievements: (e) ->
@@ -58,6 +62,13 @@ module.exports = class RootView extends CocoView
     Backbone.Mediator.publish("auth:logging-out", {})
     window.tracker?.trackEvent 'Log Out', category:'Homepage', ['Google Analytics'] if @id is 'home-view'
     logoutUser($('#login-email').val())
+
+  stopSpying: ->
+    me.stopSpying({
+      success: -> document.location.reload()
+      error: ->
+        errors.showNotyNetworkError(arguments...)
+    })
 
   onClickSignupButton: ->
     CreateAccountModal = require 'views/core/CreateAccountModal'
@@ -81,10 +92,6 @@ module.exports = class RootView extends CocoView
     anchorText = e?.currentTarget?.text
     window.tracker?.trackEvent anchorText, category: 'Homepage', ['Google Analytics'] if @id is 'home-view' and anchorText
     @toggleModal e
-
-  onOpenModalView: (e) ->
-    return console.error "Couldn't find modalPath #{e.modalPath}" unless e.modalPath and ModalClass = require e.modalPath
-    @openModalView new ModalClass {}
 
   showLoading: ($el) ->
     $el ?= @$el.find('#site-content-area')
@@ -110,10 +117,11 @@ module.exports = class RootView extends CocoView
     @buildLanguages()
     $('body').removeClass('is-playing')
 
-    if application.isProduction()
-      title = 'CodeCombat - ' + (@getTitle() or 'Learn how to code by playing a game')
-    else
-      title = @getTitle() or @constructor.name
+    if title = @getTitle() then title += ' | CodeCombat'
+    else title = 'CodeCombat - Learn how to code by playing a game'
+
+    if localStorage?.showViewNames
+      title = @constructor.name
 
     $('title').text(title)
 
@@ -136,7 +144,7 @@ module.exports = class RootView extends CocoView
     genericCodes = _.filter codes, (code) ->
       _.find(codes, (code2) ->
         code2 isnt code and code2.split('-')[0] is code)
-    for code, localeInfo of locale when code isnt 'update' and (not (code in genericCodes) or code is initialVal)
+    for code, localeInfo of locale when (not (code in genericCodes) or code is initialVal)
       $select.append(
         $('<option></option>').val(code).text(localeInfo.nativeDescription))
       if code is 'fr'
@@ -149,10 +157,7 @@ module.exports = class RootView extends CocoView
     $.i18n.setLng(newLang, {})
     @saveLanguage(newLang)
 
-    loading = application.moduleLoader.loadLanguage(me.get('preferredLanguage', true))
-    if loading
-      @listenToOnce application.moduleLoader, 'load-complete', @onLanguageLoaded
-    else
+    locale.load(me.get('preferredLanguage', true)).then =>
       @onLanguageLoaded()
 
   onLanguageLoaded: ->
@@ -184,5 +189,8 @@ module.exports = class RootView extends CocoView
   logoutRedirectURL: '/'
 
   navigateToAdmin: ->
-    if window.amActually or me.isAdmin()
+    if window.serverSession.amActually or me.isAdmin()
       application.router.navigate('/admin', {trigger: true})
+
+  onTreemaError: (e) ->
+    noty text: e.message, layout: 'topCenter', type: 'error', killer: false, timeout: 5000, dismissQueue: true

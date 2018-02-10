@@ -26,8 +26,8 @@ block content
             .col-md-6
               if view.accountType
                 div #{view.accountType}
-              div
-                span.spr #{me.get('email')}
+              div.rtl-allowed
+                span.spr #{me.get('email') || me.get('name')}
                 span.not_you
                   span.spr(data-i18n="courses.not_you")
                   a.logout-btn(data-i18n="login.log_out", href="#")
@@ -47,6 +47,9 @@ block content
                     li(data-i18n="courses.update_account_teachers_can3")
                     li(data-i18n="courses.update_account_teachers_can4")
                   .warning(data-i18n="courses.update_account_teachers_warning")
+                  if (me.get('stripe') || {}).planID
+                    br
+                    .warning(data-i18n="courses.unsubscribe_warning")
                 br
                 .text-center
                   if me.isTeacher()
@@ -68,14 +71,20 @@ block content
                     li(data-i18n="courses.update_account_students_can3")
                     li(data-i18n="courses.update_account_students_can4")
                   .warning(data-i18n="courses.update_account_students_warning")
+                  if (me.get('stripe') || {}).planID
+                    br
+                    .warning(data-i18n="courses.unsubscribe_warning")
                 br
                 .text-center
                   if me.isStudent()
                     button.remain-student-btn.btn.btn-navy(data-i18n="courses.update_account_remain_student")
                   else
+                    label
+                      span(data-i18n="courses.need_a_class_code")
+                      input(name='classCode')
                     button.update-student-btn.btn.btn-forest(data-i18n="courses.update_account_update_student")
                 br
           br
-          .small.text-center
+          .small.text-center.rtl-allowed
             span.spr(data-i18n="courses.update_account_not_sure")
             a(href='mailto:team@codecombat.com') team@codecombat.com

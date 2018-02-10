@@ -4,7 +4,7 @@ template = require 'templates/editor/component/thang-component-config-view'
 Level = require 'models/Level'
 LevelComponent = require 'models/LevelComponent'
 nodes = require '../level/treema_nodes'
-require 'vendor/treema'
+require 'lib/setupTreema'
 
 module.exports = class ThangComponentConfigView extends CocoView
   className: 'thang-component-config-view'
@@ -46,7 +46,7 @@ module.exports = class ThangComponentConfigView extends CocoView
     schema.default ?= {}
     _.merge schema.default, @additionalDefaults if @additionalDefaults
 
-    if @level?.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
+    if @level?.isType('hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder', 'game-dev', 'web-dev')
       schema.required = []
     treemaOptions =
       supermodel: @supermodel

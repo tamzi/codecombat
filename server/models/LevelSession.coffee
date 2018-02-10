@@ -4,6 +4,7 @@ AchievablePlugin = require '../plugins/achievements'
 jsonschema = require '../../app/schemas/models/level_session'
 log = require 'winston'
 config = require '../../server_config'
+LZString = require 'lz-string'
 
 LevelSessionSchema = new mongoose.Schema({
   created:
@@ -24,7 +25,8 @@ LevelSessionSchema.index({team: 1}, {sparse: true})
 LevelSessionSchema.index({totalScore: 1}, {sparse: true})
 LevelSessionSchema.index({user: 1, changed: -1}, {name: 'last played index', sparse: true})
 LevelSessionSchema.index({levelID: 1, changed: -1}, {name: 'last played by level index', sparse: true})  # Needed for getRecentSessions for CampaignLevelView
-LevelSessionSchema.index({'level.original': 1, 'state.topScores.type': 1, 'state.topScores.date': -1, 'state.topScores.score': -1}, {name: 'top scores index', sparse: true})
+LevelSessionSchema.index({'level.original': 1, 'state.topScores.type': 1, 'state.topScores.score': -1}, {name: 'all-time top scores index', sparse: true})
+LevelSessionSchema.index({'level.original': 1, 'state.topScores.type': 1, 'state.topScores.date': -1}, {name: 'latest top scores index', sparse: true})
 LevelSessionSchema.index({submitted: 1, team: 1, level: 1, totalScore: -1}, {name: 'rank counting index', sparse: true})
 #LevelSessionSchema.index({level: 1, 'leagues.leagueID': 1, submitted: 1, team: 1, totalScore: -1}, {name: 'league rank counting index', sparse: true})  # needed for league leaderboards?
 LevelSessionSchema.index({levelID: 1, submitted: 1, team: 1}, {name: 'get all scores index', sparse: true})
@@ -83,11 +85,53 @@ LevelSessionSchema.pre 'save', (next) ->
     next()
 
 LevelSessionSchema.statics.privateProperties = ['code', 'submittedCode', 'unsubscribed']
-LevelSessionSchema.statics.editableProperties = ['multiplayer', 'players', 'code', 'codeLanguage', 'completed', 'state',
-                                                 'levelName', 'creatorName', 'levelID', 'screenshot',
+LevelSessionSchema.statics.editableProperties = ['players', 'code', 'codeLanguage', 'codeConcepts', 'completed', 'state',
+                                                 'levelName', 'creatorName', 'levelID',
                                                  'chat', 'teamSpells', 'submitted', 'submittedCodeLanguage',
-                                                 'unsubscribed', 'playtime', 'heroConfig', 'team', 'transpiledCode',
-                                                 'browser']
+                                                 'unsubscribed', 'playtime', 'heroConfig', 'team',
+                                                 'browser', 'published']
 LevelSessionSchema.statics.jsonSchema = jsonschema
 
-module.exports = LevelSession = mongoose.model('level.session', LevelSessionSchema, 'level.sessions')
+LevelSessionSchema.set('toObject', {
+  transform: (doc, ret, options) ->
+    req = options.req
+    return ret unless req
+
+    submittedCode = doc.get('submittedCode')
+    unless req.user?.isAdmin() or req.user?.id is doc.get('creator') or ('employer' in (req.user?.get('permissions') ? [])) or not doc.get('submittedCode') # TODO: only allow leaderboard access to non-top-5 solutions
+      ret = _.omit ret, LevelSession.privateProperties
+    if req.query.interpret # TODO: Do we use this? LZString used to not be `require`d
+      plan = submittedCode[if doc.get('team') is 'humans' then 'hero-placeholder' else 'hero-placeholder-1']?.plan ? ''
+      plan = LZString.compressToUTF16 plan
+      ret.interpret = plan
+      ret.code = {'hero-placeholder': {plan: ''}, 'hero-placeholder-1': {plan: ''}}
+    return ret
+})
+
+if config.mongo.level_session_replica_string?
+  levelSessionMongo = mongoose.createConnection config.mongo.level_session_replica_string, (error) ->
+    if error
+      log.error "Couldn't connect to session mongo!", error
+    else
+      log.info "Connected to separate level session server with string", config.mongo.level_session_replica_string
+else
+  levelSessionMongo = mongoose
+
+LevelSession = levelSessionMongo.model('level.session', LevelSessionSchema, 'level.sessions')
+
+if config.mongo.level_session_aux_replica_string?
+  auxLevelSessionMongo = mongoose.createConnection config.mongo.level_session_aux_replica_string, (error) ->
+    if error
+      log.error "Couldn't connect to AUX session mongo!", error
+    else
+      log.info "Connected to seperate level AUX session server with string", config.mongo.level_session_aux_replica_string
+
+  auxLevelSession = auxLevelSessionMongo.model('level.session', LevelSessionSchema, 'level.sessions')
+
+  LevelSessionSchema.post 'save', (d) ->
+    return unless d instanceof LevelSession
+    o = d.toObject {transform: ((x, r) -> r), virtuals: false}
+    auxLevelSession.collection.save o,  {w:1}, (err, v) ->
+      log.error err.stack if err
+
+module.exports = LevelSession

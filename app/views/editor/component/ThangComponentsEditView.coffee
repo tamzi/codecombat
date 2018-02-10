@@ -1,14 +1,15 @@
+require('app/styles/editor/component/thang-components-edit-view.sass')
 CocoView = require 'views/core/CocoView'
 template = require 'templates/editor/component/thang-components-edit-view'
 
 Level = require 'models/Level'
 LevelComponent = require 'models/LevelComponent'
 LevelSystem = require 'models/LevelSystem'
-ComponentsCollection = require 'collections/ComponentsCollection'
+LevelComponents = require 'collections/LevelComponents'
 ThangComponentConfigView = require './ThangComponentConfigView'
 AddThangComponentsModal = require './AddThangComponentsModal'
 nodes = require '../level/treema_nodes'
-require 'vendor/treema'
+require 'lib/setupTreema'
 
 ThangType = require 'models/ThangType'
 CocoCollection = require 'collections/CocoCollection'

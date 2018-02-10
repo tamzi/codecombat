@@ -1,3 +1,4 @@
+require('app/styles/courses/activate-licenses-modal.sass')
 ModalView = require 'views/core/ModalView'
 State = require 'models/State'
 template = require 'templates/courses/activate-licenses-modal'
@@ -14,11 +15,14 @@ module.exports = class ActivateLicensesModal extends ModalView
 
   events:
     'change input[type="checkbox"][name="user"]': 'updateSelectedStudents'
+    'change .select-all-users-checkbox': 'toggleSelectAllStudents'
     'change select.classroom-select': 'replaceStudentList'
     'submit form': 'onSubmitForm'
+    'click #get-more-licenses-btn': 'onClickGetMoreLicensesButton'
 
   getInitialState: (options) ->
-    selectedUserModels = _.filter(options.selectedUsers.models, (user) -> not user.isEnrolled())
+    selectedUsers = options.selectedUsers or options.users
+    selectedUserModels = _.filter(selectedUsers.models, (user) -> not user.isEnrolled())
     {
       selectedUsers: new Users(selectedUserModels)
       visibleSelectedUsers: new Users(selectedUserModels)
@@ -31,11 +35,10 @@ module.exports = class ActivateLicensesModal extends ModalView
     @users = options.users.clone()
     @users.comparator = (user) -> user.broadName().toLowerCase()
     @prepaids = new Prepaids()
-    @prepaids.comparator = '_id'
-    @prepaids.fetchByCreator(me.id)
-    @supermodel.trackCollection(@prepaids)
+    @prepaids.comparator = 'endDate' # use prepaids in order of expiration
+    @supermodel.trackRequest @prepaids.fetchMineAndShared()
     @classrooms = new Classrooms()
-    @classrooms.fetchMine({
+    @supermodel.trackRequest @classrooms.fetchMine({
       data: {archived: false}
       success: =>
         @classrooms.each (classroom) =>
@@ -43,19 +46,23 @@ module.exports = class ActivateLicensesModal extends ModalView
           jqxhrs = classroom.users.fetchForClassroom(classroom, { removeDeleted: true })
           @supermodel.trackRequests(jqxhrs)
       })
-    @supermodel.trackCollection(@classrooms)
     
-    @listenTo @state, 'change', @render
+    @listenTo @state, 'change', ->
+      @renderSelectors('#submit-form-area')
     @listenTo @state.get('selectedUsers'), 'change add remove reset', ->
-      @state.set { visibleSelectedUsers: new Users(@state.get('selectedUsers').filter (u) => @users.get(u)) }
-      @render()
+      @updateVisibleSelectedUsers()
+      @renderSelectors('#submit-form-area')
     @listenTo @users, 'change add remove reset', ->
-      @state.set { visibleSelectedUsers: new Users(@state.get('selectedUsers').filter (u) => @users.get(u)) }
+      @updateVisibleSelectedUsers()
       @render()
     @listenTo @prepaids, 'sync add remove', ->
       @state.set {
         unusedEnrollments: @prepaids.totalMaxRedeemers() - @prepaids.totalRedeemers()
       }
+      
+  onLoaded: ->
+    @prepaids.reset(@prepaids.filter((prepaid) -> prepaid.status() is 'available'))
+    super()
   
   afterRender: ->
     super()
@@ -64,17 +71,38 @@ module.exports = class ActivateLicensesModal extends ModalView
   updateSelectedStudents: (e) ->
     userID = $(e.currentTarget).data('user-id')
     user = @users.get(userID)
-    if @state.get('selectedUsers').contains(user)
-      @state.get('selectedUsers').remove(user)
+    if @state.get('selectedUsers').findWhere({ _id: user.id })
+      @state.get('selectedUsers').remove(user.id)
     else
       @state.get('selectedUsers').add(user)
+    @$(".select-all-users-checkbox").prop('checked', @areAllSelected())
     # @render() # TODO: Have @state automatically listen to children's change events?
+
+  enrolledUsers: ->
+    @users.filter((user) -> user.isEnrolled())
+
+  unenrolledUsers: ->
+    @users.filter((user) -> not user.isEnrolled())
+
+  areAllSelected: ->
+    return _.all(@unenrolledUsers(), (user) => @state.get('selectedUsers').get(user.id))
+
+  toggleSelectAllStudents: (e) ->
+    if @areAllSelected()
+      @unenrolledUsers().forEach (user, index) =>
+        if @state.get('selectedUsers').findWhere({ _id: user.id })
+          @$("[type='checkbox'][data-user-id='#{user.id}']").prop('checked', false)
+          @state.get('selectedUsers').remove(user.id)
+    else
+      @unenrolledUsers().forEach (user, index) =>
+        if not @state.get('selectedUsers').findWhere({ _id: user.id })
+          @$("[type='checkbox'][data-user-id='#{user.id}']").prop('checked', true)
+          @state.get('selectedUsers').add(user)
   
   replaceStudentList: (e) ->
     selectedClassroomID = $(e.currentTarget).val()
     @classroom = @classrooms.get(selectedClassroomID)
-    if selectedClassroomID is 'all-students'
-      @classroom = new Classroom({ _id: 'all-students', name: 'All Students' }) # TODO: This is a horrible hack so the select shows the right option!
+    if not @classroom
       users = _.uniq _.flatten @classrooms.map (classroom) -> classroom.users.models
       @users.reset(users)
       @users.sort()
@@ -89,6 +117,9 @@ module.exports = class ActivateLicensesModal extends ModalView
     usersToRedeem = @state.get('visibleSelectedUsers')
     @redeemUsers(usersToRedeem)
 
+  updateVisibleSelectedUsers: ->
+    @state.set { visibleSelectedUsers: new Users(@state.get('selectedUsers').filter (u) => @users.get(u)) }
+
   redeemUsers: (usersToRedeem) ->
     if not usersToRedeem.size()
       @finishRedeemUsers()
@@ -96,27 +127,23 @@ module.exports = class ActivateLicensesModal extends ModalView
       return
 
     user = usersToRedeem.first()
-    prepaid = @prepaids.find((prepaid) -> prepaid.get('properties')?.endDate? and prepaid.openSpots() > 0)
-    prepaid = @prepaids.find((prepaid) -> prepaid.openSpots() > 0) unless prepaid
-    $.ajax({
-      method: 'POST'
-      url: _.result(prepaid, 'url') + '/redeemers'
-      data: { userID: user.id }
-      context: @
-      success: (prepaid) ->
-        user.set('coursePrepaidID', prepaid._id)
+    prepaid = @prepaids.find((prepaid) -> prepaid.status() is 'available')
+    prepaid.redeem(user, {
+      success: (prepaid) =>
+        user.set('coursePrepaid', prepaid.pick('_id', 'startDate', 'endDate', 'type', 'includedCourseIDs'))
         usersToRedeem.remove(user)
+        @state.get('selectedUsers').remove(user)
+        @updateVisibleSelectedUsers()
         # pct = 100 * (usersToRedeem.originalSize - usersToRedeem.size() / usersToRedeem.originalSize)
         # @$('#progress-area .progress-bar').css('width', "#{pct.toFixed(1)}%")
         application.tracker?.trackEvent 'Enroll modal finished enroll student', category: 'Courses', userID: user.id
         @redeemUsers(usersToRedeem)
-      error: (jqxhr, textStatus, errorThrown) ->
-        if jqxhr.status is 402
-          message = arguments[2]
-        else
-          message = "#{jqxhr.status}: #{jqxhr.responseText}"
-        @state.set { error: message } # TODO: Test this! ("should" never happen. Only on server responding with an error.)
+      error: (prepaid, jqxhr) =>
+        @state.set { error: jqxhr.responseJSON.message }
     })
 
   finishRedeemUsers: ->
     @trigger 'redeem-users', @state.get('selectedUsers')
+
+  onClickGetMoreLicensesButton: ->
+    @hide?() # In case this is opened in /teachers/licenses itself, otherwise the button does nothing

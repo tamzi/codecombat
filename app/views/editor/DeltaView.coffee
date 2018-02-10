@@ -1,9 +1,12 @@
 CocoView = require 'views/core/CocoView'
 template = require 'templates/editor/delta'
 deltasLib = require 'core/deltas'
-require 'vendor/diffview'
-require 'vendor/difflib'
-require 'vendor/treema'
+modelDeltas = require 'lib/modelDeltas'
+jsondiffpatch = require('lib/jsondiffpatch')
+diffview = require 'exports-loader?diffview!vendor/scripts/diffview'
+require 'vendor/styles/diffview.css'
+difflib = require 'exports-loader?difflib!vendor/scripts/difflib'
+require 'lib/setupTreema'
 
 TEXTDIFF_OPTIONS =
   baseTextName: "Old"
@@ -46,13 +49,15 @@ module.exports = class DeltaView extends CocoView
 
   buildDeltas: ->
     if @comparisonModel
-      @expandedDeltas = @model.getExpandedDeltaWith(@comparisonModel)
+      @expandedDeltas = modelDeltas.getExpandedDeltaWith(@model, @comparisonModel)
+      @deltas = modelDeltas.getDeltaWith(@model, @comparisonModel)
     else
-      @expandedDeltas = @model.getExpandedDelta()
+      @expandedDeltas = modelDeltas.getExpandedDelta(@model)
+      @deltas = modelDeltas.getDelta(@model)
     [@expandedDeltas, @skippedDeltas] = @filterDeltas(@expandedDeltas)
 
     if @headModel
-      @headDeltas = @headModel.getExpandedDelta()
+      @headDeltas = modelDeltas.getExpandedDelta(@headModel)
       @headDeltas = @filterDeltas(@headDeltas)[0]
       @conflicts = deltasLib.getConflicts(@headDeltas, @expandedDeltas)
 
@@ -72,6 +77,10 @@ module.exports = class DeltaView extends CocoView
     [newDeltas, skippedDeltas]
 
   afterRender: ->
+    expertView = @$el.find('.expert-view')
+    if expertView
+      expertView.html jsondiffpatch.formatters.html.format(@deltas)
+
     DeltaView.deltaCounter += @expandedDeltas.length
     deltas = @$el.find('.details')
     for delta, i in deltas
@@ -115,7 +124,7 @@ module.exports = class DeltaView extends CocoView
       el.append(diffview.buildView(args))
 
   getApplicableDelta: ->
-    delta = @model.getDelta()
+    delta = modelDeltas.getDelta(@model)
     delta = deltasLib.pruneConflictsFromDelta delta, @conflicts if @conflicts
     delta = deltasLib.pruneExpandedDeltasFromDelta delta, @skippedDeltas if @skippedDeltas
     delta

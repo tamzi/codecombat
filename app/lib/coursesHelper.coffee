@@ -1,130 +1,142 @@
 Levels = require 'collections/Levels'
+utils = require 'core/utils'
 
 module.exports =
   # Result: Each course instance gains a property, numCompleted, that is the
   #   number of students in that course instance who have completed ALL of
-  #   the levels in thate course
+  #   the levels in that course
   calculateDots: (classrooms, courses, courseInstances) ->
+    userLevelsCompleted = {}
+    sessions = _.flatten (classroom.sessions?.models || [] for classroom in classrooms.models)
+    for session in sessions
+      user = session.get 'creator'
+      userLevelsCompleted[user] ?= {}
+      level = session.get('level').original
+      userLevelsCompleted[user][level] ||= session.completed()
     for classroom in classrooms.models
-      # map [user, level] => session so we don't have to do find TODO
       for course, courseIndex in courses.models
         instance = courseInstances.findWhere({ courseID: course.id, classroomID: classroom.id })
         continue if not instance
+        unless classroom.sessions?.loaded
+          instance.sessionsLoaded = false
+          continue
+        instance.sessionsLoaded = true
         instance.numCompleted = 0
-        instance.numStarted = 0
-        levels = classroom.getLevels({courseID: course.id, withoutLadderLevels: true})
+        instance.started = false
+        levelsInVersionedCourse = new Set (level.get('original') for level in classroom.getLevels({courseID: course.id}).models when not level.get('practice'))
         for userID in instance.get('members')
-          levelCompletes = _.map levels.models, (level) ->
-            return true if level.isLadder()
-            #TODO: Hella slow! Do the mapping first!
-            session = _.find classroom.sessions.models, (session) ->
-              session.get('creator') is userID and session.get('level').original is level.get('original')
-            # sessionMap[userID][level].completed()
-            session?.completed()
-          if _.every levelCompletes
-            instance.numCompleted += 1
-          if _.any levelCompletes
-            instance.numStarted += 1
+          userStarted = false
+          allComplete = true
+          for level, complete of userLevelsCompleted[userID] when levelsInVersionedCourse.has level
+            userStarted = true
+            if not complete
+              allComplete = false
+              break
+          allComplete = false unless userStarted
+          instance.started ||= userStarted
+          ++instance.numCompleted if allComplete
 
   calculateEarliestIncomplete: (classroom, courses, courseInstances, students) ->
     # Loop through all the combinations of things, return the first one that somebody hasn't finished
     for course, courseIndex in courses.models
       instance = courseInstances.findWhere({ courseID: course.id, classroomID: classroom.id })
       continue if not instance
-      levels = classroom.getLevels({courseID: course.id, withoutLadderLevels: true})
+      levels = classroom.getLevels({courseID: course.id})
       for level, levelIndex in levels.models
         userIDs = []
         for user in students.models
           userID = user.id
-          session = _.find classroom.sessions.models, (session) ->
+          sessions = _.filter classroom.sessions.models, (session) ->
             session.get('creator') is userID and session.get('level').original is level.get('original')
-          if not session?.completed()
+          if not _.find(sessions, (s) -> s.completed())
             userIDs.push userID
         if userIDs.length > 0
           users = _.map userIDs, (id) ->
             students.get(id)
+          levelNumber = classroom.getLevelNumber(level.get('original'), levelIndex + 1)
           return {
+            courseName: utils.i18n(course.attributes, 'name')
             courseNumber: courseIndex + 1
-            levelNumber: levelIndex + 1
+            levelNumber
             levelName: level.get('name')
             users: users
           }
     null
 
-  calculateLatestComplete: (classroom, courses, courseInstances, students) ->
+  calculateLatestComplete: (classroom, courses, courseInstances, students, userLevelCompletedMap) ->
     # Loop through all the combinations of things in reverse order, return the level that anyone's finished
     courseModels = courses.models.slice()
     for course, courseIndex in courseModels.reverse() #
       courseIndex = courses.models.length - courseIndex - 1 #compensate for reverse
       instance = courseInstances.findWhere({ courseID: course.id, classroomID: classroom.id })
       continue if not instance
-      levels = classroom.getLevels({courseID: course.id, withoutLadderLevels: true})
+      levels = classroom.getLevels({courseID: course.id})
       levelModels = levels.models.slice()
       for level, levelIndex in levelModels.reverse() #
         levelIndex = levelModels.length - levelIndex - 1 #compensate for reverse
         userIDs = []
         for user in students.models
           userID = user.id
-          session = _.find classroom.sessions.models, (session) ->
-            session.get('creator') is userID and session.get('level').original is level.get('original')
-          if session?.completed() #
+          if userLevelCompletedMap[userID]?[level.get('original').toString()]
             userIDs.push userID
         if userIDs.length > 0
           users = _.map userIDs, (id) ->
             students.get(id)
+          levelNumber = classroom.getLevelNumber(level.get('original'), levelIndex + 1)
           return {
+            courseName: utils.i18n(course.attributes, 'name')
             courseNumber: courseIndex + 1
-            levelNumber: levelIndex + 1
+            levelNumber
             levelName: level.get('name')
             users: users
           }
     null
-    
+
   calculateConceptsCovered: (classrooms, courses, campaigns, courseInstances, students) ->
     # Loop through all level/user combination and record
     #   whether they've started, and completed, each concept
     conceptData = {}
     for classroom in classrooms.models
       conceptData[classroom.id] = {}
-      
+
       for course, courseIndex in courses.models
-        levels = classroom.getLevels({courseID: course.id, withoutLadderLevels: true})
-        
+        levels = classroom.getLevels({courseID: course.id})
+
         for level in levels.models
           levelID = level.get('original')
-          
+
           for concept in level.get('concepts')
             unless conceptData[classroom.id][concept]
               conceptData[classroom.id][concept] = { completed: true, started: false }
 
           for concept in level.get('concepts')
             for userID in classroom.get('members')
-              session = _.find classroom.sessions.models, (session) ->
+              sessions = _.filter classroom.sessions.models, (session) ->
                 session.get('creator') is userID and session.get('level').original is levelID
-              
-              if not session # haven't gotten to this level yet, but might have completed others before
+
+              if _.size(sessions) is 0 # haven't gotten to this level yet, but might have completed others before
                 for concept in level.get('concepts')
                   conceptData[classroom.id][concept].completed = false
-              if session # have gotten to the level and at least started it
+              if _.size(sessions) > 0 # have gotten to the level and at least started it
                 for concept in level.get('concepts')
                   conceptData[classroom.id][concept].started = true
-              if not session?.completed() # level started but not completed
+              if not _.find(sessions, (s) -> s.completed()) # level started but not completed
                 for concept in level.get('concepts')
                   conceptData[classroom.id][concept].completed = false
     conceptData
-      
+
   calculateAllProgress: (classrooms, courses, courseInstances, students) ->
     # Loop through all combinations and record:
     #   Completeness for each student/course
     #   Completeness for each student/level
     #   Completeness for each class/course (across all students)
     #   Completeness for each class/level (across all students)
-    
+
     # class -> course
     #   class -> course -> student
     #   class -> course -> level
     #     class -> course -> level -> student
-    
+
     progressData = {}
     for classroom in classrooms.models
       progressData[classroom.id] = {}
@@ -136,7 +148,9 @@ module.exports =
           continue
         progressData[classroom.id][course.id] = { completed: true, started: false } # to be updated
 
-        levels = classroom.getLevels({courseID: course.id, withoutLadderLevels: true})
+        levels = classroom.getLevels({courseID: course.id})
+        progressData[classroom.id][course.id].levelCount = levels.models.length
+        progressData[classroom.id][course.id].userCount = students.models.length
         for level in levels.models
           levelID = level.get('original')
           progressData[classroom.id][course.id][levelID] = {
@@ -145,52 +159,79 @@ module.exports =
             numStarted: 0
             # numCompleted: 0
           }
-          
+          isOptional = level.get('practice') or level.get('assessment')
+          sessionsForLevel = _.filter classroom.sessions.models, (session) ->
+            session.get('level').original is levelID
+
           for user in students.models
             userID = user.id
             courseProgress = progressData[classroom.id][course.id]
             courseProgress[userID] ?= { completed: true, started: false, levelsCompleted: 0 } # Only set it the first time through a user
             courseProgress[levelID][userID] = { completed: true, started: false } # These don't matter, will always be set
-            session = _.find classroom.sessions.models, (session) ->
-              session.get('creator') is userID and session.get('level').original is levelID
-            
-            if not session # haven't gotten to this level yet, but might have completed others before
-              courseProgress.started ||= false #no-op
-              courseProgress.completed = false
-              courseProgress[userID].started ||= false #no-op
-              courseProgress[userID].completed = false
+            sessions = _.filter sessionsForLevel, (session) ->
+              session.get('creator') is userID
+
+            courseProgress[levelID][userID].session = _.find(sessions, (s) -> s.completed()) or _.first(sessions)
+
+            if _.size(sessions) is 0 # haven't gotten to this level yet, but might have completed others before
+              courseProgress.started ||= false unless isOptional #no-op
+              courseProgress.completed = false unless isOptional
+              courseProgress[userID].started ||= false unless isOptional #no-op
+              courseProgress[userID].completed = false unless isOptional
               courseProgress[levelID].started ||= false #no-op
               courseProgress[levelID].completed = false
               courseProgress[levelID][userID].started = false
               courseProgress[levelID][userID].completed = false
-              
-            if session # have gotten to the level and at least started it
-              courseProgress.started = true
-              courseProgress[userID].started = true
+
+            if _.size(sessions) > 0 # have gotten to the level and at least started it
+              courseProgress.started = true unless isOptional
+              courseProgress[userID].started = true unless isOptional
               courseProgress[levelID].started = true
               courseProgress[levelID][userID].started = true
-              courseProgress[levelID][userID].lastPlayed = new Date(session.get('changed'))
+              dates = _.map(sessions, (s) -> new Date(s.get('changed')))
+              courseProgress[levelID][userID].lastPlayed = new Date(Math.max(dates...))
               courseProgress[levelID].numStarted += 1
-            
-            if session?.completed() # have finished this level
-              courseProgress.completed &&= true #no-op
-              courseProgress[userID].completed &&= true #no-op
-              courseProgress[userID].levelsCompleted += 1
+              courseProgress[levelID][userID].codeConcepts = _.flatten(_.map(sessions, (s) -> s.get('codeConcepts') or []))
+
+            if _.find(sessions, (s) -> s.completed()) # have finished this level
+              courseProgress.completed &&= true unless isOptional #no-op
+              courseProgress[userID].completed &&= true unless isOptional #no-op
+              courseProgress[userID].levelsCompleted += 1 unless isOptional
               courseProgress[levelID].completed &&= true #no-op
               # courseProgress[levelID].numCompleted += 1
               courseProgress[levelID][userID].completed = true
-              courseProgress[levelID][userID].dateFirstCompleted = new Date(session.get('dateFirstCompleted') || session.get('changed'))
+              dates = (new Date(s.get('dateFirstCompleted') || s.get('changed')) for s in sessions)
+              courseProgress[levelID][userID].dateFirstCompleted = new Date(Math.max(dates...))
             else # level started but not completed
-              courseProgress.completed = false
-              courseProgress[userID].completed = false
-              courseProgress[levelID].completed = false
+              courseProgress.completed = false unless isOptional
+              courseProgress[userID].completed = false unless isOptional
+              if isOptional
+                # Weird behavior! Since practice levels are optional, the level is considered 'incomplete'
+                # for the class as a whole only if any started-but-not-completed sessions exist
+                courseProgress[levelID].completed = false if courseProgress[levelID][userID].started
+              else
+                courseProgress[levelID].completed = false
               courseProgress[levelID][userID].completed = false
               courseProgress[levelID].dateFirstCompleted = null
               courseProgress[levelID][userID].dateFirstCompleted = null
 
+          if isOptional and courseProgress and not courseProgress[levelID].started
+            courseProgress[levelID].completed = false # edge for practice levels, not considered complete if never started either
+
     _.assign(progressData, progressMixin)
     return progressData
-  
+
+  courseLabelsArray: (courses) ->
+    labels = []
+    courseLabelIndexes = CS: 0, GD: 0, WD: 0
+    for course in courses
+      acronym = switch
+        when /game-dev/.test(course.get('slug')) then 'GD'
+        when /web-dev/.test(course.get('slug')) then 'WD'
+        else 'CS'
+      labels.push acronym + ++courseLabelIndexes[acronym]
+    labels
+
 progressMixin =
   get: (options={}) ->
     { classroom, course, level, user } = options

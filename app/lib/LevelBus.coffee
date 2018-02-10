@@ -2,6 +2,7 @@ Bus = require './Bus'
 {me} = require 'core/auth'
 LevelSession = require 'models/LevelSession'
 utils = require 'core/utils'
+tagger = require 'lib/SolutionConceptTagger'
 
 module.exports = class LevelBus extends Bus
 
@@ -41,7 +42,6 @@ module.exports = class LevelBus extends Bus
     @fireScriptsRef = @fireRef?.child('scripts')
 
   setSession: (@session) ->
-    @listenTo(@session, 'change:multiplayer', @onMultiplayerChanged)
     @timerIntervalID = setInterval(@incrementSessionPlaytime, 1000)
 
   onIdleChanged: (e) ->
@@ -53,8 +53,7 @@ module.exports = class LevelBus extends Bus
     @session.set('playtime', (@session.get('playtime') ? 0) + 1)
 
   onPoint: ->
-    return true unless @session?.get('multiplayer')
-    super()
+    return true
 
   onMeSynced: =>
     super()
@@ -124,7 +123,7 @@ module.exports = class LevelBus extends Bus
 
   onWinnabilityUpdated: (e) ->
     return unless @onPoint() and e.winnable
-    return unless e.level.get('slug') in ['ace-of-coders', 'elemental-wars']  # Mirror matches don't otherwise show victory, so we win here.
+    return unless e.level.get('slug') in ['ace-of-coders', 'elemental-wars', 'the-battle-of-sky-span', 'tesla-tesoro', 'escort-duty']  # Mirror matches don't otherwise show victory, so we win here.
     return if @session.get('state')?.complete
     @onVictory()
 
@@ -236,18 +235,14 @@ module.exports = class LevelBus extends Bus
     @changedSessionProperties.chat = true
     @saveSession()
 
-  onMultiplayerChanged: ->
-    @changedSessionProperties.multiplayer = true
-    @session.updatePermissions()
-    @changedSessionProperties.permissions = true
-    @saveSession()
-
   # Debounced as saveSession
   reallySaveSession: ->
     return if _.isEmpty @changedSessionProperties
     # don't let peeking admins mess with the session accidentally
-    return unless @session.get('multiplayer') or @session.get('creator') is me.id
+    return unless @session.get('creator') is me.id
     return if @session.fake
+    if @changedSessionProperties.code
+      @updateSessionConcepts()
     Backbone.Mediator.publish 'level:session-will-save', session: @session
     patch = {}
     patch[prop] = @session.get(prop) for prop of @changedSessionProperties
@@ -257,6 +252,21 @@ module.exports = class LevelBus extends Bus
     # don't let what the server returns overwrite changes since the save began
     tempSession = new LevelSession _id: @session.id
     tempSession.save(patch, {patch: true, type: 'PUT'})
+    
+  updateSessionConcepts: ->
+    return unless @session.get('codeLanguage') in ['javascript', 'python']
+    try
+      tags = tagger({ast: @session.lastAST, language: @session.get('codeLanguage')})
+      tags = _.without(tags, 'basic_syntax')
+      @session.set('codeConcepts', tags)
+      @changedSessionProperties.codeConcepts = true
+    catch e
+      # Just in case the concept tagger system breaks. Esper needed fixing to handle
+      # the Python skulpt AST, the concept tagger is not fully tested, and this is a
+      # critical piece of code, so want to make sure this can fail gracefully.
+      console.error('Unable to parse concepts from this AST.')
+      console.error(e)
+      
 
   destroy: ->
     clearInterval(@timerIntervalID)

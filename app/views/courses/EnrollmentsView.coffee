@@ -1,93 +1,129 @@
-app = require 'core/application'
-CreateAccountModal = require 'views/core/CreateAccountModal'
-Classroom = require 'models/Classroom'
-Classrooms = require 'collections/Classrooms'
-CocoCollection = require 'collections/CocoCollection'
-Course = require 'models/Course'
-Prepaids = require 'collections/Prepaids'
+require('app/styles/courses/enrollments-view.sass')
 RootView = require 'views/core/RootView'
-stripeHandler = require 'core/services/stripe'
-template = require 'templates/courses/enrollments-view'
+Classrooms = require 'collections/Classrooms'
+State = require 'models/State'
 User = require 'models/User'
+Prepaids = require 'collections/Prepaids'
+template = require 'templates/courses/enrollments-view'
 Users = require 'collections/Users'
+Courses = require 'collections/Courses'
+HowToEnrollModal = require 'views/teachers/HowToEnrollModal'
+TeachersContactModal = require 'views/teachers/TeachersContactModal'
+ActivateLicensesModal = require 'views/courses/ActivateLicensesModal'
 utils = require 'core/utils'
-Products = require 'collections/Products'
+ShareLicensesModal = require 'views/teachers/ShareLicensesModal'
+
+{
+  STARTER_LICENSE_COURSE_IDS
+  FREE_COURSE_IDS
+} = require 'core/constants'
 
 module.exports = class EnrollmentsView extends RootView
   id: 'enrollments-view'
   template: template
-  numberOfStudents: 15
-  pricePerStudent: 0
-
-  initialize: (options) ->
-    @ownedClassrooms = new Classrooms()
-    @ownedClassrooms.fetchMine({data: {project: '_id'}})
-    @supermodel.trackCollection(@ownedClassrooms)
-    @listenTo stripeHandler, 'received-token', @onStripeReceivedToken
-    @fromClassroom = utils.getQueryVariable('from-classroom')
-    @members = new Users()
-    # @listenTo @members, 'sync add remove', @calculateEnrollmentStats
-    @classrooms = new CocoCollection([], { url: "/db/classroom", model: Classroom })
-    @classrooms.comparator = '_id'
-    @listenToOnce @classrooms, 'sync', @onceClassroomsSync
-    @supermodel.loadCollection(@classrooms, 'classrooms', {data: {ownerID: me.id}})
-    @prepaids = new Prepaids()
-    @prepaids.comparator = '_id'
-    @prepaids.fetchByCreator(me.id)
-    @supermodel.loadCollection(@prepaids, 'prepaids')
-    @products = new Products()
-    @supermodel.loadCollection(@products, 'products')
-    super(options)
+  enrollmentRequestSent: false
 
   events:
-    'input #students-input': 'onInputStudentsInput'
-    'click .purchase-now': 'onClickPurchaseButton'
-    # 'click .enroll-students': 'onClickEnrollStudents'
+    'click #enroll-students-btn': 'onClickEnrollStudentsButton'
+    'click #how-to-enroll-link': 'onClickHowToEnrollLink'
+    'click #contact-us-btn': 'onClickContactUsButton'
+    'click .share-licenses-link': 'onClickShareLicensesLink'
 
-  onLoaded: ->
-    @calculateEnrollmentStats()
-    @pricePerStudent = @products.findWhere({name: 'course'}).get('amount')
-    super()
+  getTitle: -> return $.i18n.t('teacher.enrollments')
+  
+  i18nData: ->
+    starterLicenseCourseList: @state.get('starterLicenseCourseList')
 
-  getPriceString: -> '$' + (@getPrice()/100).toFixed(2)
-  getPrice: -> @pricePerStudent * @numberOfStudents
+  initialize: (options) ->
+    @state = new State({
+      totalEnrolled: 0
+      totalNotEnrolled: 0
+      classroomNotEnrolledMap: {}
+      classroomEnrolledMap: {}
+      numberOfStudents: 15
+      totalCourses: 0
+      prepaidGroups: {
+        'available': []
+        'pending': []
+      }
+      shouldUpsell: true
+    })
+    window.tracker?.trackEvent 'Classes Licenses Loaded', category: 'Teachers', ['Mixpanel']
+    super(options)
+
+    @courses = new Courses()
+    @supermodel.trackRequest @courses.fetch({data: { project: 'free,i18n,name' }})
+    @listenTo @courses, 'sync', ->
+      @state.set { starterLicenseCourseList: @getStarterLicenseCourseList() }
+    # Listen for language change
+    @listenTo me, 'change:preferredLanguage', ->
+      @state.set { starterLicenseCourseList: @getStarterLicenseCourseList() }
+    @members = new Users()
+    @classrooms = new Classrooms()
+    @classrooms.comparator = '_id'
+    @listenToOnce @classrooms, 'sync', @onceClassroomsSync
+    @supermodel.trackRequest @classrooms.fetchMine()
+    @prepaids = new Prepaids()
+    @supermodel.trackRequest @prepaids.fetchMineAndShared()
+    @listenTo @prepaids, 'sync', ->
+      @prepaids.each (prepaid) =>
+        prepaid.creator = new User()
+        # We never need this information if the user would be `me`
+        if prepaid.get('creator') isnt me.id
+          @supermodel.trackRequest prepaid.creator.fetchCreatorOfPrepaid(prepaid)
+    @debouncedRender = _.debounce @render, 0
+    @listenTo @prepaids, 'sync', @updatePrepaidGroups
+    @listenTo(@state, 'all', @debouncedRender)
+    
+    leadPriorityRequest = me.getLeadPriority()
+    @supermodel.trackRequest leadPriorityRequest
+    leadPriorityRequest.then ({ priority }) =>
+      shouldUpsell = (priority is 'low')
+      @state.set({ shouldUpsell })
+      if shouldUpsell
+        application.tracker?.trackEvent 'Starter License Upsell: Banner Viewed', {price: @state.get('centsPerStudent'), seats: @state.get('quantityToBuy')}
+
+  getStarterLicenseCourseList: ->
+    return if !@courses.loaded
+    COURSE_IDS = _.difference(STARTER_LICENSE_COURSE_IDS, FREE_COURSE_IDS)
+    starterLicenseCourseList = _.difference(STARTER_LICENSE_COURSE_IDS, FREE_COURSE_IDS).map (_id) =>
+      utils.i18n(@courses.findWhere({_id})?.attributes or {}, 'name')
+    starterLicenseCourseList.push($.t('general.and') + ' ' + starterLicenseCourseList.pop())
+    starterLicenseCourseList.join(', ')
 
   onceClassroomsSync: ->
     for classroom in @classrooms.models
       @supermodel.trackRequests @members.fetchForClassroom(classroom, {remove: false, removeDeleted: true})
 
+  onLoaded: ->
+    @calculateEnrollmentStats()
+    @state.set('totalCourses', @courses.size())
+    super()
+
+  updatePrepaidGroups: ->
+    @state.set('prepaidGroups', @prepaids.groupBy((p) -> p.status()))
+
   calculateEnrollmentStats: ->
     @removeDeletedStudents()
-    @memberEnrolledMap = {}
-    for user in @members.models
-      @memberEnrolledMap[user.id] = user.get('coursePrepaidID')?
-      
-    @totalEnrolled = _.reduce @members.models, ((sum, user) ->
-      sum + (if user.get('coursePrepaidID') then 1 else 0)
-    ), 0
-    
-    @numberOfStudents = @totalNotEnrolled = _.reduce @members.models, ((sum, user) ->
-      sum + (if not user.get('coursePrepaidID') then 1 else 0)
-    ), 0
-    
-    @classroomEnrolledMap = _.reduce @classrooms.models, ((map, classroom) =>
-      enrolled = _.reduce classroom.get('members'), ((sum, userID) =>
-        sum + (if @members.get(userID).get('coursePrepaidID') then 1 else 0)
-      ), 0
-      map[classroom.id] = enrolled
-      map
-    ), {}
-    
-    @classroomNotEnrolledMap = _.reduce @classrooms.models, ((map, classroom) =>
-      enrolled = _.reduce classroom.get('members'), ((sum, userID) =>
-        sum + (if not @members.get(userID).get('coursePrepaidID') then 1 else 0)
-      ), 0
-      map[classroom.id] = enrolled
-      map
-    ), {}
-    
+
+    # sort users into enrolled, not enrolled
+    groups = @members.groupBy (m) -> m.isEnrolled()
+    enrolledUsers = new Users(groups.true)
+    @notEnrolledUsers = new Users(groups.false)
+
+    map = {}
+
+    for classroom in @classrooms.models
+      map[classroom.id] = _.countBy(classroom.get('members'), (userID) -> enrolledUsers.get(userID)?).false
+
+    @state.set({
+      totalEnrolled: enrolledUsers.size()
+      totalNotEnrolled: @notEnrolledUsers.size()
+      classroomNotEnrolledMap: map
+    })
+
     true
-    
+
   removeDeletedStudents: (e) ->
     for classroom in @classrooms.models
       _.remove(classroom.get('members'), (memberID) =>
@@ -95,70 +131,29 @@ module.exports = class EnrollmentsView extends RootView
       )
     true
 
-  onInputStudentsInput: ->
-    input = @$('#students-input').val()
-    if input isnt "" and (parseFloat(input) isnt parseInt(input) or _.isNaN parseInt(input))
-      @$('#students-input').val(@numberOfStudents)
-    else
-      @numberOfStudents = Math.max(parseInt(@$('#students-input').val()) or 0, 0)
-      @updatePrice()
+  onClickHowToEnrollLink: ->
+    @openModalView(new HowToEnrollModal())
 
-  updatePrice: ->
-    @renderSelectors '#price-form-group'
+  onClickContactUsButton: ->
+    window.tracker?.trackEvent 'Classes Licenses Contact Us', category: 'Teachers', ['Mixpanel']
+    modal = new TeachersContactModal()
+    @openModalView(modal)
+    modal.on 'submit', =>
+      @enrollmentRequestSent = true
+      @debouncedRender()
 
-  numberOfStudentsIsValid: -> 0 < @numberOfStudents < 100000
-  
-  # onClickEnrollStudents: ->
-  # TODO: Needs "All students" in modal dropdown
+  onClickEnrollStudentsButton: ->
+    window.tracker?.trackEvent 'Classes Licenses Enroll Students', category: 'Teachers', ['Mixpanel']
+    modal = new ActivateLicensesModal({ selectedUsers: @notEnrolledUsers, users: @members })
+    @openModalView(modal)
+    modal.once 'hidden', =>
+      @prepaids.add(modal.prepaids.models, { merge: true })
+      @debouncedRender() # Because one changed model does not a collection update make
 
-  onClickPurchaseButton: ->
-    return @openModalView new CreateAccountModal() if me.isAnonymous()
-    unless @numberOfStudentsIsValid()
-      alert("Please enter the maximum number of students needed for your class.")
-      return
-
-    @state = undefined
-    @stateMessage = undefined
-    @render()
-
-    # Show Stripe handler
-    application.tracker?.trackEvent 'Started course prepaid purchase', {
-      price: @pricePerStudent, students: @numberOfStudents}
-    stripeHandler.open
-      amount: @numberOfStudents * @pricePerStudent
-      description: "Full course access for #{@numberOfStudents} students"
-      bitcoin: true
-      alipay: if me.get('country') is 'china' or (me.get('preferredLanguage') or 'en-US')[...2] is 'zh' then true else 'auto'
-
-  onStripeReceivedToken: (e) ->
-    @state = 'purchasing'
-    @render?()
-
-    data =
-      maxRedeemers: @numberOfStudents
-      type: 'course'
-      stripe:
-        token: e.token.id
-        timestamp: new Date().getTime()
-
-    $.ajax({
-      url: '/db/prepaid/-/purchase',
-      data: data,
-      method: 'POST',
-      context: @
-      success: (prepaid) ->
-        application.tracker?.trackEvent 'Finished course prepaid purchase', {price: @pricePerStudent, seats: @numberOfStudents}
-        @state = 'purchased'
-        @prepaids.add(prepaid)
-        @render?()
-
-      error: (jqxhr, textStatus, errorThrown) ->
-        application.tracker?.trackEvent 'Failed course prepaid purchase', status: textStatus
-        if jqxhr.status is 402
-          @state = 'error'
-          @stateMessage = arguments[2]
-        else
-          @state = 'error'
-          @stateMessage = "#{jqxhr.status}: #{jqxhr.responseText}"
-        @render?()
-    })
+  onClickShareLicensesLink: (e) ->
+    prepaidID = $(e.currentTarget).data('prepaidId')
+    @shareLicensesModal = new ShareLicensesModal({prepaid: @prepaids.get(prepaidID)})
+    @shareLicensesModal.on 'setJoiners', (prepaidID, joiners) =>
+      prepaid = @prepaids.get(prepaidID)
+      prepaid.set({ joiners })
+    @openModalView(@shareLicensesModal)

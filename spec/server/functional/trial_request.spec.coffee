@@ -7,6 +7,7 @@ TrialRequest = require '../../../server/models/TrialRequest'
 Prepaid = require '../../../server/models/Prepaid'
 request = require '../request'
 delighted = require '../../../server/delighted'
+sendwithus = require '../../../server/sendwithus'
 
 fixture = {
   type: 'subscription'
@@ -90,17 +91,6 @@ describe 'POST /db/trial.request', ->
     count = yield TrialRequest.count()
     expect(count).toBe(1)
     done()
-    
-  it 'creates a delighted profile', utils.wrap (done) ->
-    @user = yield utils.initUser({gender: 'male', lastLevel: 'abcd', preferredLanguage: 'de', testGroupNumber: 1})
-    yield utils.loginUser(@user)
-    fixture.properties.email = @user.get('email')
-    [res, body] = yield request.postAsync(getURL('/db/trial.request'), { json: fixture })
-    expect(delighted.postPeople).toHaveBeenCalled()
-    args = delighted.postPeople.calls.argsFor(0)
-    expect(args[0].email).toBe(@user.get('email'))
-    expect(args[0].name).toBe('First Last')
-    done()
 
 describe 'GET /db/trial.request', ->
 
@@ -164,7 +154,7 @@ describe 'PUT /db/trial.request/:handle', ->
     putURL = getURL('/db/trial.request/'+@trialRequest.id)
     done()
 
-  it 'returns 403 to non-admins', ->
+  it 'returns 403 to non-admins', utils.wrap (done) ->
     [res, body] = yield request.putAsync(getURL("/db/trial.request/#{@trialRequest.id}"))
     expect(res.statusCode).toEqual(403)
     done()
@@ -207,4 +197,3 @@ describe 'PUT /db/trial.request/:handle', ->
       expect(trialRequest.get('reviewer').equals(@admin._id))
       expect(new Date(trialRequest.get('reviewDate'))).toBeLessThan(new Date())
       done()
-

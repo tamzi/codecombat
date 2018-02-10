@@ -1,3 +1,4 @@
+require('app/styles/play/menu/game-menu-modal.sass')
 ModalView = require 'views/core/ModalView'
 CreateAccountModal = require 'views/core/CreateAccountModal'
 template = require 'templates/play/menu/game-menu-modal'
@@ -5,7 +6,6 @@ submenuViews = [
   require 'views/play/menu/SaveLoadView'
   require 'views/play/menu/OptionsView'
   require 'views/play/menu/GuideView'
-  require 'views/play/menu/MultiplayerView'
 ]
 
 module.exports = class GameMenuModal extends ModalView
@@ -20,6 +20,7 @@ module.exports = class GameMenuModal extends ModalView
     'click #change-hero-tab': -> @trigger 'change-hero'
     'click #close-modal': 'hide'
     'click .auth-tab': 'onClickSignupButton'
+    'click [data-toggle="coco-modal"][data-target="core/CreateAccountModal"]': 'openCreateAccountModal'
 
   constructor: (options) ->
     super options
@@ -31,11 +32,12 @@ module.exports = class GameMenuModal extends ModalView
   getRenderData: (context={}) ->
     context = super(context)
     docs = @options.level.get('documentation') ? {}
-    submenus = ['guide', 'options', 'save-load', 'multiplayer']
+    submenus = ['guide', 'options', 'save-load']
     submenus = _.without submenus, 'options' if window.serverConfig.picoCTF
-    submenus = _.without submenus, 'guide' unless docs.specificArticles?.length or docs.generalArticles?.length or window.serverConfig.picoCTF
+    unless window.serverConfig.picoCTF
+      if @level.isType('course', 'course-ladder') or not @options.level.get('helpVideos')?.length > 0
+        submenus = _.without submenus, 'guide'
     submenus = _.without submenus, 'save-load' unless me.isAdmin() or /https?:\/\/localhost/.test(window.location.href)
-    submenus = _.without submenus, 'multiplayer' unless me.isAdmin() or (@level?.get('type') in ['ladder', 'hero-ladder', 'course-ladder'] and @level.get('slug') not in ['ace-of-coders', 'elemental-wars'])
     @includedSubmenus = submenus
     context.showTab = @options.showTab ? submenus[0]
     context.submenus = submenus
@@ -43,19 +45,18 @@ module.exports = class GameMenuModal extends ModalView
       'options': 'cog'
       'guide': 'list'
       'save-load': 'floppy-disk'
-      'multiplayer': 'globe'
     context
 
   showsChooseHero: ->
-    return false if @level?.get('type') in ['course', 'course-ladder']
-    return false if @options.levelID in ['zero-sum', 'ace-of-coders', 'elemental-wars']
+    return false if @level?.isType('course', 'course-ladder')
+    return false if @level?.get('assessment') is 'open-ended'
+    return false if @options.levelID in ['zero-sum', 'ace-of-coders', 'elemental-wars', 'the-battle-of-sky-span', 'tesla-tesoro', 'escort-duty']
     return true
 
   afterRender: ->
     super()
     @insertSubView new submenuView @options for submenuView in submenuViews
     firstView = switch @options.showTab
-      when 'multiplayer' then @subviews.multiplayer_view
       when 'guide' then @subviews.guide_view
       else
         if 'guide' in @includedSubmenus then @subviews.guide_view else @subviews.options_view
@@ -75,6 +76,10 @@ module.exports = class GameMenuModal extends ModalView
     subview.onHidden?() for subviewKey, subview of @subviews
     @playSound 'game-menu-close'
     Backbone.Mediator.publish 'music-player:exit-menu', {}
+
+  openCreateAccountModal: (e) ->
+    e.stopPropagation()
+    @openModalView new CreateAccountModal()
 
   onClickSignupButton: (e) ->
     window.tracker?.trackEvent 'Started Signup', category: 'Play Level', label: 'Game Menu', level: @options.levelID

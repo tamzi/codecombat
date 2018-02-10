@@ -1,6 +1,6 @@
+require('app/styles/clans/clan-details.sass')
 RootView = require 'views/core/RootView'
 template = require 'templates/clans/clan-details'
-app = require 'core/application'
 CreateAccountModal = require 'views/core/CreateAccountModal'
 CocoCollection = require 'collections/CocoCollection'
 Campaign = require 'models/Campaign'
@@ -138,7 +138,7 @@ module.exports = class ClanDetailsView extends RootView
     return unless @members? and @memberSort?
     switch @memberSort
       when "nameDesc"
-        @members.comparator = (a, b) -> return (b.get('name') or 'Anoner').localeCompare(a.get('name') or 'Anoner')
+        @members.comparator = (a, b) -> return (b.get('name') or 'Anonymous').localeCompare(a.get('name') or 'Anonymous')
       when "progressAsc"
         @members.comparator = (a, b) ->
           aComplete = (concept for concept, state of userConceptsMap[a.id] when state is 'complete')
@@ -151,7 +151,7 @@ module.exports = class ClanDetailsView extends RootView
           else if aStarted > bStarted then return 1
           if highestUserLevelCountMap[a.id] < highestUserLevelCountMap[b.id] then return -1
           else if highestUserLevelCountMap[a.id] > highestUserLevelCountMap[b.id] then return 1
-          (a.get('name') or 'Anoner').localeCompare(b.get('name') or 'Anoner')
+          (a.get('name') or 'Anonymous').localeCompare(b.get('name') or 'Anonymous')
       when "progressDesc"
         @members.comparator = (a, b) ->
           aComplete = (concept for concept, state of userConceptsMap[a.id] when state is 'complete')
@@ -164,9 +164,9 @@ module.exports = class ClanDetailsView extends RootView
           else if aStarted < bStarted then return 1
           if highestUserLevelCountMap[a.id] > highestUserLevelCountMap[b.id] then return -1
           else if highestUserLevelCountMap[a.id] < highestUserLevelCountMap[b.id] then return 1
-          (b.get('name') or 'Anoner').localeCompare(a.get('name') or 'Anoner')
+          (b.get('name') or 'Anonymous').localeCompare(a.get('name') or 'Anonymous')
       else
-        @members.comparator = (a, b) -> return (a.get('name') or 'Anoner').localeCompare(b.get('name') or 'Anoner')
+        @members.comparator = (a, b) -> return (a.get('name') or 'Anonymous').localeCompare(b.get('name') or 'Anonymous')
     @members.sort()
 
   updateHeroIcons: ->
@@ -195,7 +195,7 @@ module.exports = class ClanDetailsView extends RootView
         if level.concepts?
           for concept in level.concepts
             @conceptsProgression.push concept unless concept in @conceptsProgression
-        if level.type is 'hero-ladder' and level.slug not in ['capture-their-flag']
+        if level.type is 'hero-ladder' and level.slug not in ['capture-their-flag']  # Would use isType, but it's not a Level model
           @arenas.push level
       @campaignLevelProgressions.push campaignLevelProgression
     @render?()
@@ -289,7 +289,7 @@ module.exports = class ClanDetailsView extends RootView
       error: (model, response, options) =>
         console.error 'Error joining clan', response
       success: (model, response, options) =>
-        app.router.navigate "/clans"
+        application.router.navigate "/clans"
         window.location.reload()
     @supermodel.addRequestResource( 'delete_clan', options).load()
 

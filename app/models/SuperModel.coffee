@@ -26,6 +26,11 @@ module.exports = class SuperModel extends Backbone.Model
       console.info "\t", resource.name, 'loaded', resource.isLoaded, resource.model
       unfinished.push resource unless resource.isLoaded
     unfinished
+    
+  numDuplicates: ->
+    # For debugging. TODO: Prevent duplicates from happening!
+    ids = (m.get('_id') for m in _.values(@models))
+    return _.size(ids) - _.size(_.unique(ids))
 
   loadModel: (model, name, fetchOptions, value=1) ->
     # Deprecating name. Handle if name is not included
@@ -89,6 +94,16 @@ module.exports = class SuperModel extends Backbone.Model
   trackCollection: (collection, value) ->
     res = @addModelResource(collection, '', {}, value)
     res.listen()
+  
+  trackPromise: (promise, value=1) ->
+    res = new Resource('', value)
+    promise.then ->
+      res.markLoaded()
+    promise.catch (err) ->
+      res.error = err
+      res.markFailed()
+    @storeResource(res, value)
+    return promise
     
   trackRequest: (jqxhr, value=1) ->
     res = new Resource('', value)
@@ -127,8 +142,11 @@ module.exports = class SuperModel extends Backbone.Model
     # can't use instanceof. SuperModel gets passed between windows, and one window
     # will have different class objects than another window.
     # So compare className instead.
-    return (m for key, m of @models when m.constructor.className is ModelClass.className) if ModelClass
-    return _.values @models
+    if not ModelClass
+      return _.values @models
+    # Allow checking by string name to reduce module dependencies
+    className = if _.isString(ModelClass) then ModelClass else ModelClass.className
+    return (m for key, m of @models when m.constructor.className is className)
 
   registerModel: (model) ->
     @models[model.getURL()] = model
@@ -247,6 +265,15 @@ module.exports = class SuperModel extends Backbone.Model
 
   getResource: (rid) ->
     return @resources[rid]
+    
+  # Promises
+  finishLoading: ->
+    new Promise (resolve, reject) =>
+      return resolve(@) if @finished()
+      @once 'failed', ({resource}) ->
+        jqxhr = resource.jqxhr
+        reject({message: jqxhr?.responseJSON?.message or jqxhr?.responseText or resource.error or 'Unknown Error'})
+      @once 'loaded-all', => resolve(@)
 
 class Resource extends Backbone.Model
   constructor: (name, value=1) ->
@@ -286,11 +313,39 @@ class ModelResource extends Resource
     @model = modelOrCollection
     @fetchOptions = fetchOptions
     @jqxhr = @model.jqxhr
+    @loadsAttempted = 0
 
   load: ->
     @markLoading()
     @fetchModel()
     @
+
+#    # TODO: Track progress on requests and don't retry if progress was made recently.
+#    # Probably use _.debounce and attach event listeners to xhr objects.
+#
+#    # This logic is for handling failed responses for level loading.
+#    timeToWait = 5000
+#    tryLoad = =>
+#      return if this.isLoaded
+#      if @loadsAttempted > 4
+#        @markFailed()
+#        return @
+#      @markLoading()
+#      @model.loading = false # So fetchModel can run again
+#      if @loadsAttempted > 0
+#        console.log "Didn't load model in #{timeToWait}ms (attempt ##{@loadsAttempted}), trying again: ", _.result(@model, 'url')
+#      @fetchModel()
+#      @listenTo @model, 'error', (levelComponent, request) ->
+#        if request.status not in [408, 504, 522, 524]
+#          clearTimeout(@timeoutID)
+#      clearTimeout(@timeoutID) if @timeoutID
+#      @timeoutID = setTimeout(tryLoad, timeToWait)
+#      if application.testing
+#        application.timeoutsToClear?.push(@timeoutID)
+#      @loadsAttempted += 1
+#      timeToWait *= 1.5
+#    tryLoad()
+#    @
 
   fetchModel: ->
     @jqxhr = @model.fetch(@fetchOptions) unless @model.loading

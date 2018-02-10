@@ -26,6 +26,7 @@ worldUpdatedEventSchema = c.object {required: ['world', 'firstWorld', 'goalState
   firstChangedFrame: {type: 'integer', minimum: 0}
   finished: {type: 'boolean'}
   god: {type: 'object'}
+  keyValueDb: {type: 'object'}
 
 module.exports =
   'god:user-code-problem': c.object {required: ['problem', 'god']},
@@ -45,6 +46,10 @@ module.exports =
 
   'god:streaming-world-updated': worldUpdatedEventSchema
 
+  'god:new-html-goal-states': c.object {required: ['goalStates', 'overallStatus']},
+    goalStates: goalStatesSchema
+    overallStatus: {type: ['string', 'null'], enum: ['success', 'failure', 'incomplete', null]}
+
   'god:goals-calculated': c.object {required: ['goalStates', 'god']},
     god: {type: 'object'}
     goalStates: goalStatesSchema
@@ -52,6 +57,7 @@ module.exports =
     overallStatus: {type: ['string', 'null'], enum: ['success', 'failure', 'incomplete', null]}
     totalFrames: {type: ['integer', 'undefined']}
     lastFrameHash: {type: ['number', 'undefined']}
+    simulationFrameRate: {type: ['number', 'undefined']}
 
   'god:world-load-progress-changed': c.object {required: ['progress', 'god']},
     god: {type: 'object'}

@@ -1,3 +1,4 @@
+.duel-stats-background
 for player in view.players
   div(class="player-container team-" + player.team)
     .player-portrait
@@ -8,11 +9,11 @@ for player in view.players
           .player-power
             .power-icon
             .power-value
-        if view.showsGold
+        if view.options.showsGold
           .player-gold
             .gold-icon
             .gold-value
-        .player-name= player.name || 'Anoner'
+        .player-name= player.name || 'Anonymous'
       .player-health
         .health-icon
         .health-bar-container

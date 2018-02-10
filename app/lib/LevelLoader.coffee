@@ -5,12 +5,15 @@ Article = require 'models/Article'
 LevelSession = require 'models/LevelSession'
 ThangType = require 'models/ThangType'
 ThangNamesCollection = require 'collections/ThangNamesCollection'
+LZString = require 'lz-string'
 
 CocoClass = require 'core/CocoClass'
 AudioPlayer = require 'lib/AudioPlayer'
-app = require 'core/application'
 World = require 'lib/world/world'
 utils = require 'core/utils'
+loadAetherLanguage = require 'lib/loadAetherLanguage'
+
+LOG = true
 
 # This is an initial stab at unifying loading and setup into a single place which can
 # monitor everything and keep a LoadingScreen visible overall progress.
@@ -19,6 +22,11 @@ utils = require 'core/utils'
 #  * World Building
 #  * Sprite map generation
 #  * Connecting to Firebase
+
+# LevelLoader depends on SuperModel retrying timed out requests, as these occasionally happen during play.
+# If LevelLoader ever moves away from SuperModel, it will have to manage its own retries.
+
+reportedLoadErrorAlready = false
 
 module.exports = class LevelLoader extends CocoClass
 
@@ -32,23 +40,37 @@ module.exports = class LevelLoader extends CocoClass
     @opponentSessionID = options.opponentSessionID
     @team = options.team
     @headless = options.headless
+    @loadArticles = options.loadArticles
     @sessionless = options.sessionless
     @fakeSessionConfig = options.fakeSessionConfig
     @spectateMode = options.spectateMode ? false
     @observing = options.observing
     @courseID = options.courseID
+    @courseInstanceID = options.courseInstanceID
 
     @worldNecessities = []
     @listenTo @supermodel, 'resource-loaded', @onWorldNecessityLoaded
+    @listenTo @supermodel, 'failed', @onWorldNecessityLoadFailed
     @loadLevel()
     @loadAudio()
     @playJingle()
     if @supermodel.finished()
       @onSupermodelLoaded()
     else
+      @loadTimeoutID = setTimeout @reportLoadError.bind(@), 30000
       @listenToOnce @supermodel, 'loaded-all', @onSupermodelLoaded
 
   # Supermodel (Level) Loading
+
+  loadWorldNecessities: ->
+    # TODO: Actually trigger loading, instead of in the constructor
+    new Promise((resolve, reject) =>
+      return resolve(@) if @world
+      @once 'world-necessities-loaded', => resolve(@)
+      @once 'world-necessity-load-failed', ({resource}) ->
+        { jqxhr } = resource
+        reject({message: jqxhr.responseJSON?.message or jqxhr.responseText or 'Unknown Error'})
+    )
 
   loadLevel: ->
     @level = @supermodel.getModel(Level, @levelID) or new Level _id: @levelID
@@ -58,12 +80,33 @@ module.exports = class LevelLoader extends CocoClass
       @level = @supermodel.loadModel(@level, 'level').model
       @listenToOnce @level, 'sync', @onLevelLoaded
 
+  reportLoadError: ->
+    return if @destroyed
+    window.tracker?.trackEvent 'LevelLoadError',
+      category: 'Error',
+      levelSlug: @work?.level?.slug,
+      unloaded: JSON.stringify(@supermodel.report().map (m) -> _.result(m.model, 'url'))
+
   onLevelLoaded: ->
-    if (@courseID and @level.get('type', true) not in ['course', 'course-ladder']) or window.serverConfig.picoCTF
+    if not @sessionless and @level.isType('hero', 'hero-ladder', 'hero-coop', 'course')
+      @sessionDependenciesRegistered = {}
+    if @level.isType('web-dev')
+      @headless = true
+      if @sessionless
+        # When loading a web-dev level in the level editor, pretend it's a normal hero level so we can put down our placeholder Thang.
+        # TODO: avoid this whole roundabout Thang-based way of doing web-dev levels
+        originalGet = @level.get
+        @level.get = ->
+          return 'hero' if arguments[0] is 'type'
+          return 'web-dev' if arguments[0] is 'realType'
+          originalGet.apply @, arguments
+    if (@courseID and not @level.isType('course', 'course-ladder', 'game-dev', 'web-dev')) or window.serverConfig.picoCTF
       # Because we now use original hero levels for both hero and course levels, we fake being a course level in this context.
       originalGet = @level.get
+      realType = @level.get('type')
       @level.get = ->
         return 'course' if arguments[0] is 'type'
+        return realType if arguments[0] is 'realType'
         originalGet.apply @, arguments
     if window.serverConfig.picoCTF
       @supermodel.addRequestResource(url: '/picoctf/problems', success: (picoCTFProblems) =>
@@ -80,8 +123,6 @@ module.exports = class LevelLoader extends CocoClass
   # Session Loading
 
   loadFakeSession: ->
-    if @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
-      @sessionDependenciesRegistered = {}
     initVals =
       level:
         original: @level.get('original')
@@ -110,33 +151,36 @@ module.exports = class LevelLoader extends CocoClass
     @loadDependenciesForSession @session
 
   loadSession: ->
-    if @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
-      @sessionDependenciesRegistered = {}
-
     if @sessionID
       url = "/db/level.session/#{@sessionID}"
       url += "?interpret=true" if @spectateMode
     else
       url = "/db/level/#{@levelID}/session"
-      url += "?team=#{@team}" if @team
-      url += "?course=#{@courseID}" if @courseID
+      if @team
+        url += "?team=#{@team}"
+      else if @courseID
+        url += "?course=#{@courseID}"
+        if @courseInstanceID
+          url += "&courseInstance=#{@courseInstanceID}"
 
     session = new LevelSession().setURL url
-    session.project = ['creator', 'team', 'heroConfig', 'codeLanguage', 'submittedCodeLanguage', 'state'] if @headless
+    if @headless and not @level.isType('web-dev')
+      session.project = ['creator', 'team', 'heroConfig', 'codeLanguage', 'submittedCodeLanguage', 'state', 'submittedCode', 'submitted']
     @sessionResource = @supermodel.loadModel(session, 'level_session', {cache: false})
     @session = @sessionResource.model
     if @opponentSessionID
-      opponentURL = "/db/level.session/#{@opponentSessionID}"
-      opponentURL += "?interpret=true" if @spectateMode or utils.getQueryVariable 'esper'
+      opponentURL = "/db/level.session/#{@opponentSessionID}?interpret=true"
       opponentSession = new LevelSession().setURL opponentURL
       opponentSession.project = session.project if @headless
       @opponentSessionResource = @supermodel.loadModel(opponentSession, 'opponent_session', {cache: false})
       @opponentSession = @opponentSessionResource.model
 
     if @session.loaded
+      console.debug 'LevelLoader: session already loaded:', @session
       @session.setURL '/db/level.session/' + @session.id
       @loadDependenciesForSession @session
     else
+      console.debug 'LevelLoader: loading session:', @session
       @listenToOnce @session, 'sync', ->
         @session.setURL '/db/level.session/' + @session.id
         @loadDependenciesForSession @session
@@ -147,27 +191,44 @@ module.exports = class LevelLoader extends CocoClass
         @listenToOnce @opponentSession, 'sync', @loadDependenciesForSession
 
   loadDependenciesForSession: (session) ->
+    console.debug "Loading dependencies for session: ", session if LOG
     if me.id isnt session.get 'creator'
       session.patch = session.save = -> console.error "Not saving session, since we didn't create it."
     else if codeLanguage = utils.getQueryVariable 'codeLanguage'
       session.set 'codeLanguage', codeLanguage
-    @loadCodeLanguagesForSession session
+    @worldNecessities = @worldNecessities.concat(@loadCodeLanguagesForSession session)
     if compressed = session.get 'interpret'
       uncompressed = LZString.decompressFromUTF16 compressed
       code = session.get 'code'
       code[if session.get('team') is 'humans' then 'hero-placeholder' else 'hero-placeholder-1'].plan = uncompressed
       session.set 'code', code
       session.unset 'interpret'
+    if session.get('codeLanguage') in ['io', 'clojure']
+      session.set 'codeLanguage', 'python'
     if session is @session
       @addSessionBrowserInfo session
       # hero-ladder games require the correct session team in level:loaded
       team = @team ? @session.get('team')
       Backbone.Mediator.publish 'level:loaded', level: @level, team: team
+      @publishedLevelLoaded = true
       Backbone.Mediator.publish 'level:session-loaded', level: @level, session: @session
       @consolidateFlagHistory() if @opponentSession?.loaded
     else if session is @opponentSession
       @consolidateFlagHistory() if @session.loaded
-    return unless @level.get('type', true) in ['hero', 'hero-ladder', 'hero-coop']
+    if @level.isType('course')  # course-ladder is hard to handle because there's 2 sessions
+      heroThangType = me.get('heroConfig')?.thangType or ThangType.heroes.captain
+      console.debug "Course mode, loading custom hero: ", heroThangType if LOG
+      url = "/db/thang.type/#{heroThangType}/version"
+      if heroResource = @maybeLoadURL(url, ThangType, 'thang')
+        console.debug "Pushing resource: ", heroResource if LOG
+        @worldNecessities.push heroResource
+      @sessionDependenciesRegistered[session.id] = true
+    unless @level.isType('hero', 'hero-ladder', 'hero-coop')
+      # Return before loading heroConfig ThangTypes. Finish if all world necessities were completed by the time the session loaded.
+      if @checkAllWorldNecessitiesRegisteredAndLoaded()
+        @onWorldNecessitiesLoaded()
+      return
+    # Load the ThangTypes needed for the session's heroConfig for these types of levels
     heroConfig = session.get('heroConfig')
     heroConfig ?= me.get('heroConfig') if session is @session and not @headless
     heroConfig ?= {}
@@ -196,16 +257,15 @@ module.exports = class LevelLoader extends CocoClass
 
   loadCodeLanguagesForSession: (session) ->
     codeLanguages = _.uniq _.filter [session.get('codeLanguage') or 'python', session.get('submittedCodeLanguage')]
+    resources = []
     for codeLanguage in codeLanguages
-      do (codeLanguage) =>
-        modulePath = "vendor/aether-#{codeLanguage}"
-        return unless application.moduleLoader?.load modulePath
-        languageModuleResource = @supermodel.addSomethingResource 'language_module'
-        onModuleLoaded = (e) ->
-          return unless e.id is modulePath
+      continue if codeLanguage in ['clojure', 'io']
+      do (codeLanguage) => # Prevents looped variables from being reassigned when async callbacks happen
+        languageModuleResource = @supermodel.addSomethingResource "language_module_#{codeLanguage}"
+        resources.push(languageModuleResource)
+        loadAetherLanguage(codeLanguage).then (aetherLang) =>
           languageModuleResource.markLoaded()
-          @stopListening application.moduleLoader, 'loaded', onModuleLoaded  # listenToOnce might work here instead, haven't tried
-        @listenTo application.moduleLoader, 'loaded', onModuleLoaded
+    return resources
 
   addSessionBrowserInfo: (session) ->
     return unless me.id is session.get 'creator'
@@ -246,7 +306,7 @@ module.exports = class LevelLoader extends CocoClass
         for indieSprite in indieSprites
           thangIDs.push indieSprite.thangType
 
-    unless @headless
+    unless @headless and not @loadArticles
       for article in @level.get('documentation')?.generalArticles or []
         articleVersions.push _.pick(article, ['original', 'majorVersion'])
 
@@ -321,14 +381,28 @@ module.exports = class LevelLoader extends CocoClass
     @worldNecessities = (r for r in @worldNecessities when r?)
     @onWorldNecessitiesLoaded() if @checkAllWorldNecessitiesRegisteredAndLoaded()
 
+  onWorldNecessityLoadFailed: (event) ->
+    @reportLoadError()
+    @trigger('world-necessity-load-failed', event)
+
   checkAllWorldNecessitiesRegisteredAndLoaded: ->
-    return false unless _.filter(@worldNecessities).length is 0
-    return false unless @thangNamesLoaded
-    return false if @sessionDependenciesRegistered and not @sessionDependenciesRegistered[@session.id] and not @sessionless
-    return false if @sessionDependenciesRegistered and @opponentSession and not @sessionDependenciesRegistered[@opponentSession.id] and not @sessionless
-    true
+    reason = @getReasonForNotYetLoaded()
+    console.debug('LevelLoader: Reason not loaded:', reason)
+    return !reason
+
+  getReasonForNotYetLoaded: ->
+    return 'worldNecessities still loading' unless _.filter(@worldNecessities).length is 0
+    return 'thang names need to load' unless @thangNamesLoaded
+    return 'not all session dependencies registered' if @sessionDependenciesRegistered and not @sessionDependenciesRegistered[@session.id] and not @sessionless
+    return 'not all opponent session dependencies registered' if @sessionDependenciesRegistered and @opponentSession and not @sessionDependenciesRegistered[@opponentSession.id] and not @sessionless
+    return 'session is not loaded' unless @session?.loaded or @sessionless
+    return 'have not published level loaded' unless @publishedLevelLoaded or @sessionless
+    return ''
 
   onWorldNecessitiesLoaded: ->
+    console.debug "World necessities loaded." if LOG
+    return if @initialized
+    @initialized = true
     @initWorld()
     @supermodel.clearMaxProgress()
     @trigger 'world-necessities-loaded'
@@ -356,8 +430,9 @@ module.exports = class LevelLoader extends CocoClass
     @supermodel.loadModel(model, resourceName)
 
   onSupermodelLoaded: ->
+    clearTimeout @loadTimeoutID
     return if @destroyed
-    console.log 'SuperModel for Level loaded in', new Date().getTime() - @t0, 'ms'
+    console.debug 'SuperModel for Level loaded in', new Date().getTime() - @t0, 'ms' if LOG
     @loadLevelSounds()
     @denormalizeSession()
 
@@ -386,7 +461,8 @@ module.exports = class LevelLoader extends CocoClass
     resource.markLoaded() if resource.spriteSheetKeys.length is 0
 
   denormalizeSession: ->
-    return if @headless or @sessionDenormalized or @spectateMode or @sessionless or me.isSessionless()
+    return if @sessionDenormalized or @spectateMode or @sessionless or me.isSessionless()
+    return if @headless and not @level.isType('web-dev')
     # This is a way (the way?) PUT /db/level.sessions/undefined was happening
     # See commit c242317d9
     return if not @session.id
@@ -428,7 +504,7 @@ module.exports = class LevelLoader extends CocoClass
     @grabTeamConfigs()
     @thangTypeTeams = {}
     for thang in @level.get('thangs')
-      if @level.get('type', true) in ['hero', 'course'] and thang.id is 'Hero Placeholder'
+      if @level.isType('hero', 'course') and thang.id is 'Hero Placeholder'
         continue  # No team colors for heroes on single-player levels
       for component in thang.components
         if team = component.config?.team
@@ -454,8 +530,7 @@ module.exports = class LevelLoader extends CocoClass
   # World init
 
   initWorld: ->
-    return if @initialized
-    @initialized = true
+    return if @level.isType('web-dev')
     @world = new World()
     @world.levelSessionIDs = if @opponentSessionID then [@sessionID, @opponentSessionID] else [@sessionID]
     @world.submissionCount = @session?.get('state')?.submissionCount ? 0
@@ -463,9 +538,9 @@ module.exports = class LevelLoader extends CocoClass
     @world.difficulty = @session?.get('state')?.difficulty ? 0
     if @observing
       @world.difficulty = Math.max 0, @world.difficulty - 1  # Show the difficulty they won, not the next one.
-    serializedLevel = @level.serialize(@supermodel, @session, @opponentSession)
+    serializedLevel = @level.serialize {@supermodel, @session, @opponentSession, @headless, @sessionless}
     @world.loadFromLevel serializedLevel, false
-    console.log 'World has been initialized from level loader.'
+    console.debug 'World has been initialized from level loader.' if LOG
 
   # Initial Sound Loading
 

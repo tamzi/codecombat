@@ -5,8 +5,9 @@ require '../common'
 nockUtils = require '../nock-utils'
 User = require '../../../server/models/User'
 Payment = require '../../../server/models/Payment'
+Prepaid = require '../../../server/models/Prepaid'
 request = require '../request'
-
+utils = require '../utils'
 
 describe '/db/payment', ->
   paymentURL = getURL('/db/payment')
@@ -334,6 +335,35 @@ describe '/db/payment', ->
                   )
                 )
 
+  describe '/db/payment/admin', ->
+
+    it 'denies anonymous users trying to create payments', utils.wrap ->
+      url = utils.getUrl('/db/payment/admin')
+      [res, body] = yield request.postAsync {url}
+      expect(res.statusCode).toEqual(403)
+
+    it 'denies non-admin users trying to create payments', utils.wrap ->
+      @user = yield utils.initUser()
+      yield utils.loginUser(@user)
+      url = utils.getUrl('/db/payment/admin')
+      [res, body] = yield request.postAsync {url}
+      expect(res.statusCode).toEqual(403)
+
+    it 'allows admin users to create payments', utils.wrap ->
+      @user = yield utils.initAdmin()
+      yield utils.loginUser(@user)
+      [res, body] = yield request.postAsync
+        url: utils.getUrl('/db/payment/admin')
+        json:
+          purchaser: @user.get('_id')
+          recipient: @user.get('_id')
+          service: 'paymatt'
+          gems: 23
+          amount: 100
+      expect(res.statusCode).toEqual(201)
+      payment = Payment.findOne(purchaser: @user.get('_id'))
+      expect(payment).toBeDefined()
+
   describe '/db/payment/custom', ->
     afterEach nockUtils.teardownNock
     stripe = require('stripe')(config.stripe.secretKey)
@@ -482,4 +512,59 @@ describe '/db/payment', ->
               nockDone()
               done()
         )
-        
+
+  describe '/db/payment/-/school_sales', ->
+    beforeEach utils.wrap (done) ->
+      yield utils.clearModels([Payment, Prepaid, User])
+      @user = yield utils.initUser()
+      @admin = yield utils.initAdmin()
+      yield utils.loginUser(@admin)
+      @prepaid = yield utils.makePrepaid({ creator: @user._id })
+      @url = getURL("/db/payment/-/school_sales")
+      done()
+
+    it 'returns payments linked to prepaids', utils.wrap (done) ->
+      payment = yield utils.makePayment({ purchaser: @user._id, prepaidID: @prepaid._id, amount: 100})
+      [res, body] = yield request.getAsync {uri: @url, json: true}
+      expect(res.statusCode).toEqual(200)
+      expect(body.length).toEqual(1)
+      expect(body[0]._id).toEqual(payment._id.toString())
+      expect(body[0].prepaidID).toEqual(@prepaid._id.toString())
+      expect(body[0].userID).toEqual(@user._id.toString())
+      done()
+
+    it 'returns payments linked to custom product', utils.wrap (done) ->
+      payment = yield utils.makePayment({ purchaser: @user._id, productID: 'custom', amount: 100})
+      [res, body] = yield request.getAsync {uri: @url, json: true}
+      expect(res.statusCode).toEqual(200)
+      expect(body.length).toEqual(1)
+      expect(body[0]._id).toEqual(payment._id.toString())
+      expect(body[0].userID).toEqual(@user._id.toString())
+      done()
+
+      
+describe 'GET /db/payments/-/all?payPalResource=:id', ->
+  it 'returns all payments which have the given payment or subscription id', utils.wrap ->
+    @admin = yield utils.initAdmin()
+    yield utils.loginUser(@admin)
+    payPal?.transactions?[0]?.related_resources?[0]?.sale?.id
+    @payment1 = yield utils.makePayment({payPal: transactions: [{related_resources: [{sale:{id:'abc'}}]}]})
+    @payment2 = yield utils.makePayment({payPalSale: {id: '123'}})
+    
+    url = utils.getUrl('/db/payments/-/all')
+    [res, body] = yield request.getAsync {url, json: true, qs: {payPalResource: 'abc'}}
+    expect(res.statusCode).toEqual(200)
+    expect(body.length).toEqual(1)
+    expect(body[0]._id).toBe(@payment1.id)
+
+    [res, body] = yield request.getAsync {url, json: true, qs: {payPalResource: '123'}}
+    expect(res.statusCode).toEqual(200)
+    expect(body.length).toEqual(1)
+    expect(body[0]._id).toBe(@payment2.id)
+
+  it 'returns 403 if you are not an admin', utils.wrap ->
+    @user = yield utils.initUser()
+    yield utils.loginUser(@user)
+    url = utils.getUrl('/db/payments/-/all')
+    [res, body] = yield request.getAsync {url, json: true, qs: {payPalResource: 'abc'}}
+    expect(res.statusCode).toEqual(403)

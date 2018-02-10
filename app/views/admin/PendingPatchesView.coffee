@@ -40,6 +40,8 @@ module.exports = class PendingPatchesView extends RootView
               "thang/#{patch.slug}"
             when 'level_system', 'level_component'
               "level/items?#{patch.target.collection}=#{patch.slug}"
+            when 'course'
+              "course/#{patch.slug}"
             else
               console.log "Where do we review a #{patch.target.collection} patch?"
               ''
@@ -91,7 +93,10 @@ module.exports = class PendingPatchesView extends RootView
     success = (nameMapArray) =>
       return if @destroyed
       nameMap = {}
-      for model in nameMapArray
+      for model, modelIndex in nameMapArray
+        unless model
+          console.warn "No model found for id #{ids[modelIndex]}"
+          continue
         nameMap[model.original or model._id] = model.name
       for patch in patches
         original = patch.target.original

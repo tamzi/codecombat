@@ -1,4 +1,4 @@
-app = require 'core/application'
+require('app/styles/clans/clans.sass')
 CreateAccountModal = require 'views/core/CreateAccountModal'
 RootView = require 'views/core/RootView'
 template = require 'templates/clans/clans'
@@ -14,34 +14,32 @@ module.exports = class ClansView extends RootView
   id: 'clans-view'
   template: template
 
+
   events:
     'click .create-clan-btn': 'onClickCreateClan'
     'click .join-clan-btn': 'onJoinClan'
     'click .leave-clan-btn': 'onLeaveClan'
     'click .private-clan-checkbox': 'onClickPrivateCheckbox'
 
-  constructor: (options) ->
-    super options
-    @initData()
+  initialize: ->
+    @publicClansArray = []
+    @myClansArray = []
+    @idNameMap = {}
+    @loadData()
 
   destroy: ->
     @stopListening?()
-
-  getRenderData: ->
-    context = super()
-    context.idNameMap = @idNameMap
-    context.publicClans = _.filter(@publicClans.models, (clan) -> clan.get('type') is 'public')
-    context.myClans = @myClans.models
-    context.myClanIDs = me.get('clans') ? []
-    context
 
   afterRender: ->
     super()
     @setupPrivateInfoPopover()
 
-  initData: ->
-    @idNameMap = {}
+  onLoaded: ->
+    super()
+    @publicClansArray = _.filter(@publicClans.models, (clan) -> clan.get('type') is 'public')
+    @myClansArray = @myClans.models
 
+  loadData: ->
     sortClanList = (a, b) ->
       if a.get('memberCount') isnt b.get('memberCount')
         if a.get('memberCount') < b.get('memberCount') then 1 else -1
@@ -52,12 +50,15 @@ module.exports = class ClansView extends RootView
       @refreshNames @publicClans.models
       @render?()
     @supermodel.loadCollection(@publicClans, 'public_clans', {cache: false})
+
     @myClans = new CocoCollection([], { url: "/db/user/#{me.id}/clans", model: Clan, comparator: sortClanList })
     @listenTo @myClans, 'sync', =>
       @refreshNames @myClans.models
       @render?()
     @supermodel.loadCollection(@myClans, 'my_clans', {cache: false})
+
     @listenTo me, 'sync', => @render?()
+    @myClanIDs = me.get('clans') ? []
 
   refreshNames: (clans) ->
     clanIDs = _.filter(clans, (clan) -> clan.get('type') is 'public')
@@ -108,7 +109,7 @@ module.exports = class ClansView extends RootView
         error: (model, response, options) =>
           console.error 'Error saving clan', response.status
         success: (model, response, options) =>
-          app.router.navigate "/clans/#{model.id}"
+          application.router.navigate "/clans/#{model.id}"
           window.location.reload()
     else
       console.log 'Invalid name'
@@ -122,7 +123,7 @@ module.exports = class ClansView extends RootView
         error: (model, response, options) =>
           console.error 'Error joining clan', response
         success: (model, response, options) =>
-          app.router.navigate "/clans/#{clanID}"
+          application.router.navigate "/clans/#{clanID}"
           window.location.reload()
       @supermodel.addRequestResource( 'join_clan', options).load()
     else

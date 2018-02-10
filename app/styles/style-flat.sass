@@ -4,7 +4,7 @@
 
 // TODO: Move flat style into probably several files and Bootstrap variables
 
-body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='sr']
+body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='sr'], body[lang='pl'], body[lang='lt'], body[lang='sl'], body[lang='tr'], body[lang='vi']
   // Google Fonts version of Arvo only has Latin glyphs, not Cyrillic
   // TODO: figure out font fallbacks for other languages not covered by Arvo
   //$headline-font: 'Open Sans', serif  // Doesn't work
@@ -90,6 +90,9 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
       top: 20px
       font-size: 40px
       opacity: 0.5
+      
+  hr
+    border-top: 1px solid gray
   
   // Navbar
 
@@ -104,10 +107,21 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
         height: 65px
         margin-right: 10px
 
-      color: $burgandy
+        &.code-ninjas-powered-by
+          width: 150px
+          height: auto
+          margin-top: -10px
+
+      .code-ninjas-logo
+        width: 150px
+        margin-right: 10px
+        margin-top: 6px
+        margin-bottom: 10px
+
+      color: $burgundy
       &:hover
         color: white
-        background: $burgandy
+        background: $burgundy
         
       .glyphicon-home
         position: relative
@@ -116,8 +130,12 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
     .navbar-toggle
       color: black
       margin: 30px 25px 0
+      border-color: $navy
+
+      .icon-bar
+        background-color: $navy
       
-    @media (min-width: $screen-lg-min)
+    @media (min-width: $grid-float-breakpoint)
       #navbar-collapse
         float: right
         
@@ -132,11 +150,11 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
       line-height: 31px
       padding: 32px 15px 0
       height: 95px
-      color: $burgandy
+      color: $burgundy
       text-shadow: 0 0 0
       
       &:hover
-        background: $burgandy
+        background: $burgundy
         color: white
         
     .nav > li.disabled > a
@@ -151,7 +169,7 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
       padding: 30px 10px
       width: 100%
       
-    @media (max-width: $screen-lg-min)
+    @media (max-width: $grid-float-breakpoint)
       .nav > li > a
         padding: 10px 20px
         height: 45px
@@ -172,8 +190,8 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
       height: 33px
     
     // For teacher avatars
-    .border-burgandy
-      border-color: $burgandy
+    .border-burgundy
+      border-color: $burgundy
       
     .border-navy
       border-color: $navy
@@ -205,7 +223,7 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
     .disabled
       opacity: 50%
   
-  .btn ~ .btn
+  .btn + .btn
     margin-left: 12px
 
   .btn-primary, .btn-navy
@@ -244,10 +262,24 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
     border: 1px solid $purple
     color: $purple
 
-  .btn-burgandy
-    background-color: $burgandy
+  .btn-burgundy
+    background-color: $burgundy
     color: white
   
+  .btn-burgundy-alt
+    background-color: white
+    border: 1px solid $burgundy
+    color: $burgundy
+  
+  .btn-gray
+    background-color: $gray-light
+    color: white
+
+  .btn-gray-alt
+    background-color: white
+    border: 1px solid $gray-light
+    color: $gray-light
+
   .btn-lg
     font-size: 18px
     
@@ -388,13 +420,33 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
   .text-navy
     color: $navy
     
+  .text-burgundy
+    color: $burgundy
+    
+  .text-forest
+    color: $forest
+
+  .text-gold
+    color: $gold
+
+  .text-gray
+    color: $gray-light
+    
   .bg-navy
     background-color: $navy
     color: white
     h1, h2, h3, h4, h5, h6, a
       color: white
-    a.btn-primary-alt
+    a.btn-primary-alt, a.btn-navy-alt
       color: $navy
+    
+  .bg-forest
+    background-color: $forest
+    color: white
+    h1, h2, h3, h4, h5, h6, a
+      color: white
+    a.btn-primary-alt, a.btn-forest-alt
+      color: $forest
       
   // Spacing
   // Copied spacing classes in bootstrap v4 alpha 2
@@ -439,7 +491,7 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
   #footer
     background-image: url("/images/pages/home/footer_background.png")
     height: 229px
-    margin: -22px auto 0
+    margin: 65px auto 0
     color: white
 
     @media (max-width: $screen-sm-min)
@@ -474,6 +526,8 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
       width: 150px
       margin: 0 10px
 
+    .contact-info
+      display: inline-block
       
   // modal-base-flat.jade
   
@@ -485,4 +539,4 @@ body[lang='ru'], body[lang='uk'], body[lang='bg'], body[lang^='mk'], body[lang='
   .button.close
     position: absolute
     top: 10px
-    left: 10px
+    right: 10px
