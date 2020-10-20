@@ -23,6 +23,13 @@ module.exports =
       data: {parentEmail}
     })
     return new Promise(jqxhr.then)
+  
+  sendParentTeacherSignup: ({teacherEmail, parentEmail, parentName, customContent}) ->
+    jqxhr = $.ajax('/contact/send-parent-refer-teacher', {
+      method: 'POST'
+      data: {teacherEmail, parentEmail, parentName, customContent}
+    })
+    return new Promise(jqxhr.then)
 
   sendTeacherSignupInstructions: (teacherEmail, studentName) ->
     jqxhr = $.ajax('/contact/send-teacher-signup-instructions', {
@@ -34,6 +41,7 @@ module.exports =
   sendTeacherGameDevProjectShare: ({teacherEmail, sessionId, codeLanguage, levelName}) ->
     jqxhr = $.ajax('/contact/send-teacher-game-dev-project-share', {
       method: 'POST'
-      data: {teacherEmail, sessionId, levelName, codeLanguage: _.string.titleize(codeLanguage)}
+      data: {teacherEmail, sessionId, levelName, codeLanguage: _.string.titleize(codeLanguage).replace('script', 'Script')}
     })
     return new Promise(jqxhr.then)
+

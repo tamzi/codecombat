@@ -2,24 +2,38 @@ pug = require 'pug'
 path = require 'path'
 cheerio = require 'cheerio'
 en = require './app/locale/en'
+zh = require './app/locale/zh-HANS'
 basePath = path.resolve('./app')
 _ = require 'lodash'
 fs = require('fs')
+
+# TODO: stop webpack build on error (e.g. http://dev.topheman.com/how-to-fail-webpack-build-on-error/)
 
 compile = (contents, locals, filename, cb) ->
   # console.log "Compile", filename, basePath
   outFile = filename.replace /.static.pug$/, '.html'
   # console.log {outFile, filename, basePath}
   out = pug.compileClientWithDependenciesTracked contents,
-    pretty: true
     filename: path.join(basePath, 'templates/static', filename)
     basedir: basePath
 
-  translate = (key) ->
+  outFn = pug.compile(contents, {
+    filename: path.join(basePath, 'templates/static', filename),
+    basedir: basePath
+  })
+
+  translate = (key, chinaInfra) ->
+    type = 'text'
+
     html = /^\[html\]/.test(key)
     key = key.substring(6) if html
+    type = 'html' if html
 
-    t = en.translation
+    content = /^\[content\]/.test(key)
+    key = key.substring(9) if content
+    type = 'content' if content
+
+    t = if chinaInfra then zh.translation else en.translation
     #TODO: Replace with _.property when we get modern lodash
     translationPath = key.split(/[.]/)
     while translationPath.length > 0
@@ -29,30 +43,38 @@ compile = (contents, locals, filename, cb) ->
 
     return out =
       text: t
-      html: html
+      type: type
 
   i18n = (k,v) ->
     return k.i18n.en[a] if 'i18n' in k
     k[v]
 
-
   try
-    fn = new Function(out.body + '\n return template;')()
-    str = fn(_.merge {_, i18n}, locals, require './static-mock')
+    locals = _.merge({_, i18n}, locals, require './static-mock')
+    # NOTE: do NOT add more build env-driven feature flags here if at all possible.
+    # NOTE: instead, use showingStaticPagesWhileLoading (in static-mock) to delay/hide UI until features flags loaded
+    locals.me.useDexecure = -> not (locals.chinaInfra ? false)
+    locals.me.useSocialSignOn = -> not (locals.chinaInfra ? false)
+    locals.me.useGoogleAnalytics = -> not (locals.chinaInfra ? false)
+    locals.me.useStripe = -> not (locals.chinaInfra ? false)
+    # Netease Qiyu Live Chat Plugin
+    locals.me.useQiyukf = -> locals.chinaInfra ? false
+    str = outFn(locals)
   catch e
+    console.log "Compile", filename, basePath
+    console.log 'ERROR', e.message
+    throw new Error(e.message)
     return cb(e.message)
-
-
-
-
 
   c = cheerio.load(str)
   elms = c('[data-i18n]')
   elms.each (i, e) ->
     i = c(@)
-    t = translate(i.data('i18n'))
-    if t.html
+    t = translate(i.data('i18n'), locals.chinaInfra)
+    if t.type == 'html'
       i.html(t.text)
+    else if t.type == 'content'
+      i.attr("content", t.text)
     else
       i.text(t.text)
 
@@ -60,7 +82,7 @@ compile = (contents, locals, filename, cb) ->
   # console.log "Wrote to #{outFile}", deps
 
   # console.log {outFile}
-  
+
   if not fs.existsSync(path.resolve('./public'))
     fs.mkdirSync(path.resolve('./public'))
   if not fs.existsSync(path.resolve('./public/templates'))
@@ -98,6 +120,7 @@ WebpackStaticStuff.prototype.apply = (compiler) ->
         console.log "\nCompiled static file: #{filename}"
       catch err
         console.log "\nError compiling #{filename}:", err
+        return callback("\nError compiling #{filename}:", err)
     callback()
 
   # Watch the static template files for changes

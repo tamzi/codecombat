@@ -37,18 +37,18 @@ SystemsDocumentationView = require 'views/editor/docs/SystemsDocumentationView'
 LevelFeedbackView = require 'views/editor/level/LevelFeedbackView'
 storage = require 'core/storage'
 utils = require 'core/utils'
+loadAetherLanguage = require("lib/loadAetherLanguage");
 
 require 'vendor/scripts/coffeescript' # this is tenuous, since the LevelSession and LevelComponent models are what compile the code
 require 'lib/setupTreema'
 
-# Make sure that all of our Aethers are loaded, so that if we try to preview the level, it will work.
-require 'bower_components/aether/build/javascript'
-require 'bower_components/aether/build/python'
-require 'bower_components/aether/build/coffeescript'
-require 'bower_components/aether/build/lua'
-require 'bower_components/aether/build/java'
+# Make sure that all of our languages are loaded, so that if we try to preview the level, it will work.
 require 'bower_components/aether/build/html'
-
+Promise.all(
+  ["javascript", "python", "coffeescript", "lua"].map(
+    loadAetherLanguage
+  )
+)
 require 'lib/game-libraries'
 
 module.exports = class LevelEditView extends RootView
@@ -95,6 +95,9 @@ module.exports = class LevelEditView extends RootView
     @courses = new CocoCollection([], { url: "/db/course", model: Course})
     @supermodel.loadCollection(@courses, 'courses')
 
+  getMeta: ->
+    title: 'Level Editor'
+
   destroy: ->
     clearInterval @timerIntervalID
     super()
@@ -102,8 +105,6 @@ module.exports = class LevelEditView extends RootView
   showLoading: ($el) ->
     $el ?= @$el.find('.outer-content')
     super($el)
-
-  getTitle: -> "LevelEditor - " + (@level.get('name') or '...')
 
   onLoaded: ->
     _.defer =>
@@ -116,7 +117,7 @@ module.exports = class LevelEditView extends RootView
       for levelID, level of campaign.get('levels') when levelID is @level.get('original')
         @courseID = campaignCourseMap[campaign.id]
       break if @courseID
-    if not @courseID and me.isAdmin()
+    if not @courseID and (me.isAdmin() or me.isArtisan())
       # Give it a fake course ID so we can test it in course mode before it's in a course.
       @courseID = '560f1a9f22961295f9427742'
     @getLevelCompletionRate()
@@ -149,13 +150,18 @@ module.exports = class LevelEditView extends RootView
     Backbone.Mediator.publish 'editor:level-loaded', level: @level
     @showReadOnly() if me.get('anonymous')
     @patchesView = @insertSubView(new PatchesView(@level), @$el.find('.patches-view'))
-    @listenTo @patchesView, 'accepted-patch', -> location.reload() unless key.shift  # Reload to make sure changes propagate, unless secret shift shortcut
+    @listenTo @patchesView, 'accepted-patch', (attrs) ->
+      if attrs?.save
+        f = => @startCommittingLevel(attrs)
+        setTimeout f, 400 # Give some time for closing patch modal
+      else
+        location.reload() unless key.shift  # Reload to make sure changes propagate, unless secret shift shortcut
     @$el.find('#level-watch-button').find('> span').toggleClass('secret') if @level.watching()
 
   openRevertModal: (e) ->
     e.stopPropagation()
     @openModalView new RevertModal()
-  
+
   openGenerateTerrainModal: (e) ->
     e.stopPropagation()
     @openModalView new GenerateTerrainModal()
@@ -223,7 +229,7 @@ module.exports = class LevelEditView extends RootView
     Backbone.Mediator.publish 'editor:view-switched', {}
 
   startCommittingLevel: (e) ->
-    @openModalView new SaveLevelModal level: @level, supermodel: @supermodel, buildTime: @levelBuildTime
+    @openModalView new SaveLevelModal level: @level, supermodel: @supermodel, buildTime: @levelBuildTime, commitMessage: e?.commitMessage
     Backbone.Mediator.publish 'editor:view-switched', {}
 
   showArtisanGuide: (e) ->

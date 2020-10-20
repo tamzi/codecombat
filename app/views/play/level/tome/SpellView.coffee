@@ -18,6 +18,7 @@ Autocomplete = require './editor/autocomplete'
 TokenIterator = ace.require('ace/token_iterator').TokenIterator
 LZString = require 'lz-string'
 utils = require 'core/utils'
+Aether = require 'lib/aether/aether'
 
 module.exports = class SpellView extends CocoView
   id: 'spell-view'
@@ -111,7 +112,7 @@ module.exports = class SpellView extends CocoView
     @ace.setTheme 'ace/theme/textmate'
     @ace.setDisplayIndentGuides false
     @ace.setShowPrintMargin false
-    @ace.setShowInvisibles aceConfig.invisibles
+    @ace.setShowInvisibles false
     @ace.setBehavioursEnabled aceConfig.behaviors
     @ace.setAnimatedScroll true
     @ace.setShowFoldWidgets false
@@ -234,7 +235,7 @@ module.exports = class SpellView extends CocoView
         if @aceSession.selection.isEmpty()
           cursor = @ace.getCursorPosition()
           line = @aceDoc.getLine(cursor.row)
-          if delimMatch = line.substring(cursor.column).match /^(["|']?\)+;?)/  # Yay for editors misreading regexes: "
+          if delimMatch = line.substring(cursor.column).match /^(["|']?\)+;?)/
             newRange = @ace.getSelectionRange()
             newRange.setStart newRange.start.row, newRange.start.column + delimMatch[1].length
             newRange.setEnd newRange.end.row, newRange.end.column + delimMatch[1].length
@@ -247,7 +248,7 @@ module.exports = class SpellView extends CocoView
         disableSpaces = @options.level.get('disableSpaces') or false
         aceConfig = me.get('aceConfig') ? {}
         disableSpaces = false if aceConfig.keyBindings and aceConfig.keyBindings isnt 'default'  # Not in vim/emacs mode
-        disableSpaces = false if @spell.language in ['lua', 'java', 'coffeescript', 'html']  # Don't disable for more advanced/experimental languages
+        disableSpaces = false if @spell.language in ['lua', 'java', 'cpp', 'coffeescript', 'html']  # Don't disable for more advanced/experimental languages
         if not disableSpaces or (_.isNumber(disableSpaces) and disableSpaces < me.level())
           return @ace.execCommand 'insertstring', ' '
         line = @aceDoc.getLine @ace.getCursorPosition().row
@@ -504,6 +505,8 @@ module.exports = class SpellView extends CocoView
         snippets: @autocompleteOn
       autoLineEndings:
         javascript: ';'
+        java: ';'
+        c_cpp: ';' # Match ace editor language mode
       popupFontSizePx: popupFontSizePx
       popupLineHeightPx: 1.5 * popupFontSizePx
       popupWidthPx: 380
@@ -557,12 +560,13 @@ module.exports = class SpellView extends CocoView
       @onAllLoaded()
 
   onAllLoaded: =>
-    @spell.transpile @spell.source
-    @spell.loaded = true
-    Backbone.Mediator.publish 'tome:spell-loaded', spell: @spell
-    @eventsSuppressed = false  # Now that the initial change is in, we can start running any changed code
-    @createToolbarView()
-    @updateHTML create: true if @options.level.isType('web-dev')
+    @fetchToken(@spell.source, @spell.language).then (token) =>
+      @spell.transpile token
+      @spell.loaded = true
+      Backbone.Mediator.publish 'tome:spell-loaded', spell: @spell
+      @eventsSuppressed = false  # Now that the initial change is in, we can start running any changed code
+      @createToolbarView()
+      @updateHTML create: true if @options.level.isType('web-dev')
 
   createDebugView: ->
     return if @options.level.isType('hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder', 'game-dev', 'web-dev')  # We'll turn this on later, maybe, but not yet.
@@ -621,7 +625,7 @@ module.exports = class SpellView extends CocoView
     return if @destroyed
     lineCount = @aceDoc.getLength()
     lastLine = @aceDoc.$lines[lineCount - 1]
-    if lastLine isnt ''
+    if /\S/.test lastLine
       cursorPosition = @ace.getCursorPosition()
       wasAtEnd = cursorPosition.row is lineCount - 1 and cursorPosition.column is lastLine.length
       @aceDoc.insertNewLine row: lineCount, column: 0  #lastLine.length
@@ -650,6 +654,10 @@ module.exports = class SpellView extends CocoView
       # Expand it to bottom of tome if too short.
       #newHeight = Math.max @spellPaletteHeight, tomeHeight - newTop + 10
       #spellPaletteView.css('height', newHeight) if @spellPaletteHeight isnt newHeight
+    if @firstEntryToScrollLine? and @ace?.renderer?.$cursorLayer?.config
+      @ace.scrollToLine @firstEntryToScrollLine, true, true
+      @firstEntryToScrollLine = undefined
+
 
   hideProblemAlert: ->
     return if @destroyed
@@ -683,12 +691,8 @@ module.exports = class SpellView extends CocoView
       @saveSpadeTimeout = null
 
   onManualCast: (e) ->
-    cinematic = @options.level.isType('hero', 'hero-ladder', 'course-ladder')
-    cinematic = false if me.isStudent() and not @options.level.isType('course-ladder')
-    cinematic = false if not me.isStudent() and not me.testCinematicPlayback()
-
     cast = @$el.parent().length
-    @recompile cast, e.realTime, cinematic
+    @recompile cast, e.realTime, false
     @focus() if cast
     if @options.level.isType('web-dev')
       @sourceAtLastCast = @getSource()
@@ -702,17 +706,21 @@ module.exports = class SpellView extends CocoView
     @lockDefaultCode true
     @recompile cast
     Backbone.Mediator.publish 'tome:spell-loaded', spell: @spell
+    @hasSetInitialCursor = false
+    @highlightCurrentLine()
     @updateLines()
 
   recompile: (cast=true, realTime=false, cinematic=false) ->
-    hasChanged = @spell.source isnt @getSource()
-    if hasChanged
-      @spell.transpile @getSource()
-      @updateAether true, false
-    if cast  #and (hasChanged or realTime)  # just always cast now
-      @cast(false, realTime, false, cinematic)
-    if hasChanged
-      @notifySpellChanged()
+    @fetchTokenForSource().then (source) =>
+      readableSource = Aether.getTokenSource(source)
+      hasChanged = @spell.source isnt readableSource
+      if hasChanged
+        @spell.transpile source
+        @updateAether true, false
+      if cast  #and (hasChanged or realTime)  # just always cast now
+        @cast(false, realTime, false, cinematic)
+      if hasChanged
+        @notifySpellChanged()
 
   updateACEText: (source) ->
     @eventsSuppressed = true
@@ -777,49 +785,65 @@ module.exports = class SpellView extends CocoView
   # * The editor will reserve space for one annotation as a codeless area.
   # - Problem alerts and ranges will only show on fully cast worlds. Annotations will show continually.
 
+  fetchToken: (source, language) =>
+    if language not in ['java', 'cpp']
+      return Promise.resolve(source)
+
+    headers =  { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+    m = document.cookie.match(/JWT=([a-zA-Z0-9.]+)/)
+    service = window?.localStorage?.kodeKeeperService or "/service/parse-code"
+    fetch service, {method: 'POST', mode:'cors', headers:headers, body:JSON.stringify({code: source, language: language})}
+    .then (x) => x.json()
+    .then (x) => x.token
+
+  fetchTokenForSource: () =>
+    source = @ace.getValue()
+    @fetchToken(source, @spell.language)
+
   updateAether: (force=false, fromCodeChange=true) =>
     # Depending on whether we have any code changes, significant code changes, or have switched
     # to a new spellThang, we may want to refresh our Aether display.
     return unless aether = @spellThang?.aether
-    source = @getSource()
-    @spell.hasChangedSignificantly source, aether.raw, (hasChanged) =>
-      codeHasChangedSignificantly = force or hasChanged
-      needsUpdate = codeHasChangedSignificantly or @spellThang isnt @lastUpdatedAetherSpellThang
-      return if not needsUpdate and aether is @displayedAether
-      castAether = @spellThang.castAether
-      codeIsAsCast = castAether and source is castAether.raw
-      aether = castAether if codeIsAsCast
-      return if not needsUpdate and aether is @displayedAether
+    @fetchTokenForSource().then (source) =>
+      readableSource = Aether.getTokenSource(source)
+      @spell.hasChangedSignificantly source, aether.raw, (hasChanged) =>
+        codeHasChangedSignificantly = force or hasChanged
+        needsUpdate = codeHasChangedSignificantly or @spellThang isnt @lastUpdatedAetherSpellThang
+        return if not needsUpdate and aether is @displayedAether
+        castAether = @spellThang.castAether
+        codeIsAsCast = castAether and readableSource is castAether.raw
+        aether = castAether if codeIsAsCast
+        return if not needsUpdate and aether is @displayedAether
 
-      # Now that that's figured out, perform the update.
-      # The web worker Aether won't track state, so don't have to worry about updating it
-      finishUpdatingAether = (aether) =>
-        @clearAetherDisplay() # In case problems were added since last clearing
-        @displayAether aether, codeIsAsCast
-        @lastUpdatedAetherSpellThang = @spellThang
-        @guessWhetherFinished aether if fromCodeChange
+        # Now that that's figured out, perform the update.
+        # The web worker Aether won't track state, so don't have to worry about updating it
+        finishUpdatingAether = (aether) =>
+          @clearAetherDisplay() # In case problems were added since last clearing
+          @displayAether aether, codeIsAsCast
+          @lastUpdatedAetherSpellThang = @spellThang
+          @guessWhetherFinished aether if fromCodeChange
 
-      @clearAetherDisplay()
-      if codeHasChangedSignificantly and not codeIsAsCast
-        if @worker
-          workerMessage =
-            function: 'transpile'
-            spellKey: @spell.spellKey
-            source: source
+        @clearAetherDisplay()
+        if codeHasChangedSignificantly and not codeIsAsCast
+          if @worker
+            workerMessage =
+              function: 'transpile'
+              spellKey: @spell.spellKey
+              source: source
 
-          @worker.addEventListener 'message', (e) =>
-            workerData = JSON.parse e.data
-            if workerData.function is 'transpile' and workerData.spellKey is @spell.spellKey
-              @worker.removeEventListener 'message', arguments.callee, false
-              aether.problems = workerData.problems
-              aether.raw = source
-              finishUpdatingAether(aether)
-          @worker.postMessage JSON.stringify(workerMessage)
+            @worker.addEventListener 'message', (e) =>
+              workerData = JSON.parse e.data
+              if workerData.function is 'transpile' and workerData.spellKey is @spell.spellKey
+                @worker.removeEventListener 'message', arguments.callee, false
+                aether.problems = workerData.problems
+                aether.raw = readableSource
+                finishUpdatingAether(aether)
+            @worker.postMessage JSON.stringify(workerMessage)
+          else
+            aether.transpile source
+            finishUpdatingAether(aether)
         else
-          aether.transpile source
           finishUpdatingAether(aether)
-      else
-        finishUpdatingAether(aether)
 
   # Each problem-generating piece (aether, web-dev, ace html worker) clears its own problems/annotations
   clearAetherDisplay: ->
@@ -870,10 +894,10 @@ module.exports = class SpellView extends CocoView
       for i in [0...problem.row]
         lineOffsetPx += @aceSession.getRowLength(i) * @ace.renderer.lineHeight
       lineOffsetPx -= @ace.session.getScrollTop()
-    Backbone.Mediator.publish 'tome:show-problem-alert', problem: problem, lineOffsetPx: Math.max lineOffsetPx, 0
     if problem.level not in ['info', 'warning']
       Backbone.Mediator.publish 'playback:stop-cinematic-playback', {}
       # TODO: find a way to also show problem alert if it's compile-time, and/or not enter cinematic mode at all
+    Backbone.Mediator.publish 'tome:show-problem-alert', problem: problem, lineOffsetPx: Math.max lineOffsetPx, 0
 
   # Gets the number of lines before the start of <script> content in the usercode
   # Because Errors report their line number relative to the <script> tag
@@ -956,11 +980,13 @@ module.exports = class SpellView extends CocoView
     currentLine = _.string.rtrim(@aceDoc.$lines[cursorPosition.row].replace(@singleLineCommentRegex(), ''))  # trim // unless inside "
     endOfLine = cursorPosition.column >= currentLine.length  # just typed a semicolon or brace, for example
     beginningOfLine = not currentLine.substr(0, cursorPosition.column).trim().length  # uncommenting code, for example
-    incompleteThis = /^(s|se|sel|self|t|th|thi|this)$/.test currentLine.trim()
+    incompleteThis = /^(s|se|sel|self|t|th|thi|this|g|ga|gam|game|h|he|her|hero)$/.test currentLine.trim()
     #console.log "finished=#{valid and (endOfLine or beginningOfLine) and not incompleteThis}", valid, endOfLine, beginningOfLine, incompleteThis, cursorPosition, currentLine.length, aether, new Date() - 0, currentLine
     if not incompleteThis and @options.level.isType('game-dev')
       # TODO: Improve gamedev autocast speed
-      @spell.transpile @getSource()
+      @fetchTokenForSource().then (token) =>
+        # TODO: This is janky for those languages with a delay
+        @spell.transpile token
       @cast(false, false, true)
     else if (endOfLine or beginningOfLine) and not incompleteThis
       @preload()
@@ -984,7 +1010,7 @@ module.exports = class SpellView extends CocoView
     @_singleLineCommentOnlyRegex
 
   commentOutMyCode: ->
-    prefix = if @spell.language is 'javascript' then 'return;  ' else 'return  '
+    prefix = if @spell.language in ['javascript', 'java', 'cpp'] then 'return;  ' else 'return  '
     comment = prefix + commentStarts[@spell.language]
 
   preload: ->
@@ -1033,7 +1059,10 @@ module.exports = class SpellView extends CocoView
     return unless @spell.thang?.thang.id is e.problem.userInfo.thangID
     @spell.hasChangedSignificantly @getSource(), null, (hasChanged) =>
       return if hasChanged
-      @spell.thang.aether.addProblem e.problem
+      if e.problem.type is 'runtime'
+        @spellThang.castAether?.addProblem e.problem
+      else
+        @spell.thang.aether.addProblem e.problem
       @lastUpdatedAetherSpellThang = null  # force a refresh without a re-transpile
       @updateAether false, false
 
@@ -1054,16 +1083,18 @@ module.exports = class SpellView extends CocoView
     @updateAether false, false
 
   onNewWorld: (e) ->
-    if thang = e.world.getThangByID @spell.thang?.thang.id
-      aether = e.world.userCodeMap[thang.id]?[@spell.name]
-      @spell.thang.castAether = aether
-      @spell.thang.aether = @spell.createAether thang
-      #console.log thang.id, @spell.spellKey, 'ran', aether.metrics.callsExecuted, 'times over', aether.metrics.statementsExecuted, 'statements, with max recursion depth', aether.metrics.maxDepth, 'and full flow/metrics', aether.metrics, aether.flow
-    else
-      @spell.thang = null
+    @fetchTokenForSource().then (token) =>
+      if thang = e.world.getThangByID @spell.thang?.thang.id
+        aether = e.world.userCodeMap[thang.id]?[@spell.name]
+        @spell.thang.castAether = aether
+        @spell.thang.aether = @spell.createAether thang
+        #console.log thang.id, @spell.spellKey, 'ran', aether.metrics.callsExecuted, 'times over', aether.metrics.statementsExecuted, 'statements, with max recursion depth', aether.metrics.maxDepth, 'and full flow/metrics', aether.metrics, aether.flow
+      else
+        @spell.thang = null
 
-    @spell.transpile()  # TODO: is there any way we can avoid doing this if it hasn't changed? Causes a slight hang.
-    @updateAether false, false
+
+      @spell.transpile token
+      @updateAether false, false
 
   # --------------------------------------------------------------------------------------------------
 
@@ -1171,7 +1202,7 @@ module.exports = class SpellView extends CocoView
         Backbone.Mediator.publish("tome:highlight-line", line:start.row) if application.isIPadApp
         $cinematicParent = $('#cinematic-code-display')
         highlightedIndex = 0
-        for sourceLineNumber in [end.row - 2 .. end.row + 2]
+        for sourceLineNumber in [end.row - 3 .. end.row + 3]
           codeLine = _.string.rtrim @aceDoc.$lines[sourceLineNumber]
           $codeLineEl = $cinematicParent.find(".code-line-#{highlightedIndex++}")
           utils.replaceText $codeLineEl.find('.line-number'), if sourceLineNumber >= 0 then sourceLineNumber + 1 else ''
@@ -1232,6 +1263,10 @@ module.exports = class SpellView extends CocoView
         unless seenAnEntryPoint
           session.addGutterDecoration index, 'next-entry-point'
           seenAnEntryPoint = true
+          unless @hasSetInitialCursor
+            @hasSetInitialCursor = true
+            @ace.navigateTo index, line.match(/\S/)?.index ? line.length
+            @firstEntryToScrollLine = index
 
         # Shift pointer right based on current indentation
         # TODO: tabs probably need different horizontal offsets than spaces
@@ -1297,8 +1332,7 @@ module.exports = class SpellView extends CocoView
 
   onChangeEditorConfig: (e) ->
     aceConfig = me.get('aceConfig') ? {}
-    @ace.setDisplayIndentGuides aceConfig.indentGuides # default false
-    @ace.setShowInvisibles aceConfig.invisibles # default false
+    @ace.setBehavioursEnabled aceConfig.behaviors
     @ace.setKeyboardHandler @keyBindings[aceConfig.keyBindings ? 'default']
     @updateAutocomplete(aceConfig.liveCompletion ? false)
 
@@ -1386,5 +1420,6 @@ commentStarts =
   coffeescript: '#'
   lua: '--'
   java: '//'
+  cpp: '//'
   html: '<!--'
   css: '/\\*'

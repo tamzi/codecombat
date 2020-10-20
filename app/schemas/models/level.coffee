@@ -68,7 +68,7 @@ GoalSchema = c.object {title: 'Goal', description: 'A goal that the player can a
   html: c.object {title: 'HTML', description: 'A jQuery selector and what its result should be'},
     selector: {type: 'string', description: 'jQuery selector to run on the user HTML, like "h1:first-child"'}
     valueChecks: c.array {title: 'Value checks', description: 'Logical checks on the resulting value for this goal to pass.', format: 'event-prereqs'}, EventPrereqSchema
-
+  concepts: c.array {title: 'Target Concepts', description: 'Which programming concepts this goal demonstrates.', uniqueItems: true, format: 'concepts-list'}, c.concept
 ResponseSchema = c.object {title: 'Dialogue Button', description: 'A button to be shown to the user with the dialogue.', required: ['text']},
   text: {title: 'Title', description: 'The text that will be on the button', 'default': 'Okay', type: 'string', maxLength: 30}
   channel: c.shortString(title: 'Channel', format: 'event-channel', description: 'Channel that this event will be broadcast over, like "level:set-playing".')
@@ -206,6 +206,25 @@ GeneralArticleSchema = c.object {
   original: c.objectId(title: 'Original', description: 'A reference to the original Article.')#, format: 'hidden')  # hidden?
   majorVersion: {title: 'Major Version', description: 'Which major version of the Article is being used.', type: 'integer', minimum: 0} #, format: 'hidden'}  # hidden?
 
+IntroContentObject = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    type: { title: 'Content type', enum: ['cinematic', 'interactive', 'cutscene-video', 'avatarSelectionScreen'] }
+    contentId: {
+      oneOf: [
+        c.stringID(title: 'Content ID for all languages')
+        {
+          type: 'object',
+          title: 'Content ID specific to languages',
+          additionalProperties: c.stringID(),
+          format: 'code-languages-object'
+        }
+      ]
+    }
+  }
+}
+
 LevelSchema = c.object {
   title: 'Level'
   description: 'A spectacular level which will delight and educate its stalwart players with the sorcery of coding.'
@@ -264,8 +283,9 @@ _.extend LevelSchema.properties,
   i18n: {type: 'object', format: 'i18n', props: ['name', 'description', 'loadingTip', 'studentPlayInstructions'], description: 'Help translate this level'}
   banner: {type: 'string', format: 'image-file', title: 'Banner'}
   goals: c.array {title: 'Goals', description: 'An array of goals which are visible to the player and can trigger scripts.'}, GoalSchema
-  type: c.shortString(title: 'Type', description: 'What type of level this is.', 'enum': ['campaign', 'ladder', 'ladder-tutorial', 'hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder', 'game-dev', 'web-dev'])
+  type: c.shortString(title: 'Type', description: 'What type of level this is.', 'enum': ['campaign', 'ladder', 'ladder-tutorial', 'hero', 'hero-ladder', 'hero-coop', 'course', 'course-ladder', 'game-dev', 'web-dev', 'intro'])
   kind: c.shortString(title: 'Kind', description: 'Similar to type, but just for our organization.', enum: ['demo', 'usage', 'mastery', 'advanced', 'practice', 'challenge'])
+  ozariaType: c.shortString(title: 'Ozaria Level Type', description: 'Similar to type, specific to ozaria.', enum: ['practice', 'challenge', 'capstone'])
   terrain: c.terrainString
   requiresSubscription: {title: 'Requires Subscription', description: 'Whether this level is available to subscribers only.', type: 'boolean'}
   tasks: c.array {title: 'Tasks', description: 'Tasks to be completed for this level.'}, c.task
@@ -277,9 +297,9 @@ _.extend LevelSchema.properties,
   buildTime: {type: 'number', description: 'How long it has taken to build this level.'}
   practice: { type: 'boolean' }
   practiceThresholdMinutes: {type: 'number', description: 'Players with larger playtimes may be directed to a practice level.'}
-  assessment: { type: ['boolean', 'string'], enum: [true, false, 'open-ended'], description: 'Set to true if this is an assessment level.' }
+  assessment: { type: ['boolean', 'string'], enum: [true, false, 'open-ended', 'cumulative'], description: 'Set to true if this is an assessment level.' }
   assessmentPlacement: { type: 'string', enum: ['middle', 'end'] }
-  
+
   primerLanguage: { type: 'string', enum: ['javascript', 'python'], description: 'Programming language taught by this level.' }
   shareable: { title: 'Shareable', type: ['string', 'boolean'], enum: [false, true, 'project'], description: 'Whether the level is not shareable (false), shareable (true), or a sharing-encouraged project level ("project"). Make sure to use "project" for project levels so they show up correctly in the Teacher Dashboard.' }
 
@@ -309,6 +329,19 @@ _.extend LevelSchema.properties,
       pattern: { type: 'string' }
     }
   }
+  autocompleteReplacement: c.array {}, {
+    type: 'object'
+    properties: {
+      name: { type: 'string' }
+      snippets: {
+        type: 'object',
+        title: 'Snippets',
+        description: 'List of snippets for the respective programming languages',
+        additionalProperties: c.codeSnippet,
+        format: 'code-languages-object'
+      }
+    }
+  }
   requiredGear: { type: 'object', title: 'Required Gear', description: 'Slots that should require one of a set array of items for that slot', additionalProperties: {
     type: 'array'
     items: { type: 'string', links: [{rel: 'db', href: '/db/thang.type/{($)}/version'}], format: 'latest-version-original-reference' }
@@ -320,6 +353,7 @@ _.extend LevelSchema.properties,
   requiredProperties: { type: 'array', items: {type: 'string'}, description: 'Names of properties a hero must have equipped to play.', format: 'solution-gear', title: 'Required Properties' }
   restrictedProperties: { type: 'array', items: {type: 'string'}, description: 'Names of properties a hero must not have equipped to play.', title: 'Restricted Properties' }
   recommendedHealth: { type: 'number', minimum: 0, exclusiveMinimum: true, description: 'If set, will show the recommended health to be able to beat this level with the intended main solution to the player when choosing equipment.', format: 'solution-stats', title: 'Recommended Health' }
+  maximumHealth: { type: 'number', minimum: 0, exclusiveMinimum: true, description: 'If set, will enforce the maximum health of the hero.', title: 'Maximum Health'}
   allowedHeroes: { type: 'array', title: 'Allowed Heroes', description: 'Which heroes can play this level. For any hero, leave unset.', items: {
     type: 'string', links: [{rel: 'db', href: '/db/thang.type/{($)}/version'}], format: 'latest-version-original-reference'
   }}
@@ -350,7 +384,33 @@ _.extend LevelSchema.properties,
   concepts: c.array {title: 'Programming Concepts', description: 'Which programming concepts this level covers.', uniqueItems: true, format: 'concepts-list'}, c.concept
   primaryConcepts: c.array {title: 'Primary Concepts', description: 'The main 1-3 concepts this level focuses on.', uniqueItems: true}, c.concept
   picoCTFProblem: { type: 'string', description: 'Associated picoCTF problem ID, if this is a picoCTF level' }
-
+  password: { type: 'string', description: 'The password required to create a session for this level' }
+  mirrorMatch: { type: 'boolean', description: 'Whether a multiplayer ladder arena is a mirror match' }
+  introContent: { # valid for levels of type 'intro'
+    title: 'Intro content',
+    description: 'Intro content sequence',
+    type: 'array',
+    items: IntroContentObject
+  }
+  additionalGoals: c.array { title: 'Additional Goals', description: 'Goals that are added after the first regular goals are completed' }, c.object {
+    title: 'Goals',
+    description: 'Goals for this stage',
+    minItems: 1,
+    uniqueItems: true,
+    properties: {
+      stage: { type: 'integer', minimum: 2, title: 'Goal Stage', description: 'Which stage these additional goals are for (2 and onwards)' },
+      goals: c.array { title: 'Goals', description: 'An array of goals which are visible to the player and can trigger scripts.' }, GoalSchema
+    }
+  }
+  isPlayedInStages: {type: 'boolean', title: 'Is Played in Stages', description: 'Is this level played in stages and other content(cinematics) is loaded in between stages'}
+  methodsBankList: c.array {title: 'Methods Bank List'}, c.object {
+    properties: {
+      name: c.shortString(title: 'Name'),
+      section: c.shortString(title: 'Methods Bank Section', pattern: /^\w[\w ]*$/),
+      subSection: c.shortString(title: 'Methods Bank Sub-Section', pattern: /^\w[\w ]*$/),
+      componentName: c.shortString(title: 'Level Component Name', description: 'Level Component to use for documentation in case there are multiple components with same property\'s documentation'),
+    }
+  }
 
 c.extendBasicProperties LevelSchema, 'level'
 c.extendSearchableProperties LevelSchema
@@ -358,6 +418,7 @@ c.extendVersionedProperties LevelSchema, 'level'
 c.extendPermissionsProperties LevelSchema, 'level'
 c.extendPatchableProperties LevelSchema
 c.extendTranslationCoverageProperties LevelSchema
+c.extendAlgoliaProperties LevelSchema
 
 module.exports = LevelSchema
 

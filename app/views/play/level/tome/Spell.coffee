@@ -55,7 +55,11 @@ module.exports = class Spell
 
     @source = @originalSource
     @parameters = p.parameters
-    if @permissions.readwrite.length and sessionSource = @session.getSourceFor(@spellKey)
+    if @otherSession and @team is @otherSession.get('team') and sessionSource = @otherSession.getSourceFor(@spellKey)
+      # Load opponent code from other session (new way, not relying on PlayLevelView loadOpponentTeam)
+      @source = sessionSource
+    else if @permissions.readwrite.length and sessionSource = @session.getSourceFor(@spellKey)
+      # Load either our code or opponent code (old way, opponent code copied into our session in PlayLevelView loadOpponentTeam)
       if sessionSource isnt '// Should fill in some default source\n'  # TODO: figure out why session is getting this default source in there and stop it
         @source = sessionSource
     if p.aiSource and not @otherSession and not @canWrite()
@@ -71,6 +75,18 @@ module.exports = class Spell
   setLanguage: (@language) ->
     @language = 'html' if @level.isType('web-dev')
     @displayCodeLanguage = utils.capitalLanguages[@language]
+    if @language is 'java' and not @languages[@language]
+      lines = (@languages.javascript ? '').split '\n'
+      lines.push '' if lines[lines.length - 1] isnt ''
+      @languages.java = """
+        public class AI {
+          public static void main(String[] args) {
+        #{(lines.map ((line) -> '    ' + line)).join('\n')}
+          }
+        }
+      """
+    if @language is 'cpp' and not @languages[@language]
+      @languages.cpp = utils.translatejs2cpp @languages.javascript
     @originalSource = @languages[@language] ? @languages.javascript
     @originalSource = @addPicoCTFProblem() if window.serverConfig.picoCTF
 
@@ -106,7 +122,7 @@ module.exports = class Spell
       # Temporary hackery to make it look like we meant while True: in our sample code until we can update everything
       @originalSource = switch @language
         when 'python' then @originalSource.replace /loop:/, 'while True:'
-        when 'javascript' then @originalSource.replace /loop {/, 'while (true) {'
+        when 'javascript', 'java', 'cpp' then @originalSource.replace /loop {/, 'while (true) {'
         when 'lua' then @originalSource.replace /loop\n/, 'while true then\n'
         when 'coffeescript' then @originalSource
         else @originalSource
@@ -240,6 +256,8 @@ module.exports = class Spell
           @problemContext.thisProperties.push prop
 
     # TODO: See SpellPaletteView.createPalette() for other interesting contextual properties
+
+    @problemContext.thisValueAlias = if @level.isType('game-dev') then 'game' else 'hero'
 
     @problemContext
 

@@ -18,7 +18,7 @@ module.exports = class DiplomatView extends ContributeClassView
         githubURL: "https://github.com/codecombat/codecombat/blob/master/app/locale/#{languageCode}.coffee"
         nativeDescription: language.nativeDescription
         englishDescription: language.englishDescription
-        diplomats: @diplomats[languageCode]
+        diplomats: @diplomats[languageCode] ? []
         nativeDescription: language.nativeDescription
         englishDescription: language.englishDescription
         languageCode: languageCode
@@ -56,13 +56,13 @@ module.exports = class DiplomatView extends ContributeClassView
     'zh-HANT': ['Adam23', 'gintau', 'shuwn']      # 繁體中文, Chinese (Traditional)
     'zh-WUU-HANS': []  # 吴语, Wuu (Simplified)
     'zh-WUU-HANT': ['benojan']  # 吳語, Wuu (Traditional)
-    fr: ['Anon', 'Armaldio', 'ChrisLightman', 'Elfisen', 'Feugy', 'MartinDelille', 'Oaugereau', 'Xeonarno', 'dc55028', 'jaybi', 'pstweb', 'veritable', 'xavismeh', 'CatSkald']             # français, French
+    fr: ['AminSai', 'Anon', 'Armaldio', 'ChrisLightman', 'Elfisen', 'Feugy', 'MartinDelille', 'Oaugereau', 'Xeonarno', 'dc55028', 'jaybi', 'pstweb', 'veritable', 'xavismeh', 'CatSkald']             # français, French
     ja: ['Coderaulic', 'g1itch', 'kengos', 'treby']             # 日本語, Japanese
     ar: ['5y', 'ahmed80dz']             # العربية, Arabic
     'pt-BR': ['Bia41', 'Gutenberg Barros', 'Kieizroe', 'Matthew Burt', 'brunoporto', 'cassiocardoso', 'jklemm', 'Arkhad']        # português do Brasil, Portuguese (Brazil)
     'pt-PT': ['Imperadeiro98', 'Matthew Burt', 'ProgramadorLucas', 'ReiDuKuduro', 'batista', 'gutierri']        # Português (Portugal), Portuguese (Portugal)
     pl: ['Anon', 'Kacper Ciepielewski', 'TigroTigro', 'kvasnyk', 'CatSkald']             # język polski, Polish
-    it: ['AlessioPaternoster', 'flauta', 'Atomk', 'Lionhear7']              # italiano, Italian
+    it: ['flauta', 'Atomk', 'Lionhear7']              # italiano, Italian
     tr: ['Nazım Gediz Aydındoğmuş', 'cobaimelan', 'gediz', 'ilisyus', 'wakeup']             # Türkçe, Turkish
     nl: []        # Nederlands, Dutch
     'nl-BE': ['Glen De Cauwsemaecker', 'Ruben Vereecken']        # Nederlands (België), Dutch (Belgium)
@@ -82,11 +82,11 @@ module.exports = class DiplomatView extends ContributeClassView
     sl: []             # slovenščina, Slovene
     fi: []             # suomi, Finnish
     bg: []             # български език, Bulgarian
-    nb: ['bardeh', 'ebirkenes', 'matifol', 'mcclane654', 'mogsie', 'torehaug']             # Norsk Bokmål, Norwegian (Bokmål)
-    nn: []             # Norsk Nynorsk, Norwegian (Nynorsk)
+    nb: ['bardeh', 'ebirkenes', 'matifol', 'mcclane654', 'mogsie', 'torehaug', 'AnitaOlsen']             # Norsk Bokmål, Norwegian (Bokmål)
+    nn: ['Ayexa']             # Norsk Nynorsk, Norwegian (Nynorsk)
     he: ['OverProgram', 'monetita']             # עברית, Hebrew
     lt: []             # lietuvių kalba, Lithuanian
-    sr: []             # српски, Serbian
+    sr: ['Vitalije']             # српски, Serbian
     uk: ['ImmortalJoker', 'OlenaGapak', 'Rarst', 'endrilian', 'fess89', 'gorodsb', 'probil', 'CatSkald']             # українська, Ukrainian
     hi: []             # मानक हिन्दी, Hindi
     ur: []             # اُردُو, Urdu

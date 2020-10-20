@@ -1,4 +1,4 @@
-module.exports = loadSegmentio = _.once ->
+module.exports = loadSegmentio = if not me.useSocialSignOn() then -> Promise.resolve([]) else _.once ->
   return new Promise (accept, reject) ->
     analytics = window.analytics = window.analytics or []
     analytics.invoked = true

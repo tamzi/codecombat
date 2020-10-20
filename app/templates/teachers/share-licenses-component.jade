@@ -19,7 +19,7 @@
       p.error-message.small
         | {{ error }}
         =" "
-        a(href='/teachers/resources/faq#how-do-i-share-licenses-to-other-teachers-in-my-organization-')
+        a(href='/teachers/resources/faq#how-do-i-share-licenses-to-other-teachers-in-my-organization')
           span
             | {{ $t("share_licenses.more_info") }}
   
@@ -30,6 +30,7 @@
     li.list-item( is="share-licenses-joiner-row",
         v-if="joiner",
         v-for="joiner in prepaid.joiners",
+        @revokeJoiner="revokeJoiner",
         :key="joiner.userID",
         :joiner="joiner",
         :prepaid="prepaid")

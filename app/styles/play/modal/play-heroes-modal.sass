@@ -166,7 +166,7 @@ $heroCanvasHeight: 275px
             @include opacity(0.25)
             .hero-avatar
               background-color: black
-      
+
     .carousel-inner
       position: absolute
       top: 166px
@@ -314,6 +314,11 @@ $heroCanvasHeight: 275px
   #hero-footer
     @include user-select(text)
 
+  #hero-footer-text-background
+    position: absolute
+    left: 25px
+    top: 522px
+
   #purchasable-hero-explanation, #loading-hero-explanation, #locked-hero-explanation
     position: absolute
     left: 32px
@@ -369,7 +374,7 @@ $heroCanvasHeight: 275px
     font-size: 24px
     line-height: 30px
     text-align: center
-    text-transform: uppercase    
+    text-transform: uppercase
     border-style: solid
     border-image: url(/images/common/button-background-primary-active.png) 14 20 20 20 fill round
     border-width: 14px 20px 20px 20px
@@ -484,14 +489,12 @@ $heroCanvasHeight: 275px
             background-image: url(/images/common/code_languages/python_small.png)
           &[data-value="coffeescript"]
             background-image: url(/images/common/code_languages/coffeescript_small.png)
-          &[data-value="clojure"]
-            background-image: url(/images/common/code_languages/clojure_small.png)
           &[data-value="lua"]
             background-image: url(/images/common/code_languages/lua_small.png)
           &[data-value="java"]
             background-image: url(/images/common/code_languages/java_small.png)
-          &[data-value="io"]
-            background-image: url(/images/common/code_languages/io_small.png)
+          &[data-value="cpp"]
+            background-image: url(/images/common/code_languages/cpp_small.png)
 
   #confirm-button
     background: url(/images/pages/play/modal/confirm-button.png)
@@ -506,11 +509,6 @@ $heroCanvasHeight: 275px
     font-size: 26px
     font-family: $headings-font-family
     color: white
-
-  #codeplay-choose-hero-ad
-    width: 100%
-    position: absolute
-    top: 670px
 
 body.ipad #play-heroes-modal
   // iPad is Python-only for now, and has its own reset button.

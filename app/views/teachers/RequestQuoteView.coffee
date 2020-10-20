@@ -9,6 +9,9 @@ ConfirmModal = require 'views/core/ConfirmModal'
 User = require 'models/User'
 algolia = require 'core/services/algolia'
 State = require 'models/State'
+parseFullName = require('parse-full-name').parseFullName
+countryList = require('country-list')()
+UsaStates = require('usa-states').UsaStates
 
 SIGNUP_REDIRECT = '/teachers'
 DISTRICT_NCES_KEYS = ['district', 'district_id', 'district_schools', 'district_students', 'phone']
@@ -24,8 +27,9 @@ module.exports = class RequestQuoteView extends RootView
     'submit #request-form': 'onSubmitRequestForm'
     'change input[name="city"]': 'invalidateNCES'
     'change input[name="state"]': 'invalidateNCES'
+    'change select[name="state"]': 'invalidateNCES'
     'change input[name="district"]': 'invalidateNCES'
-    'change input[name="country"]': 'invalidateNCES'
+    'change select[name="country"]': 'onChangeCountry'
     'click #email-exists-login-link': 'onClickEmailExistsLoginLink'
     'submit #signup-form': 'onSubmitSignupForm'
     'click #logout-link': -> me.logout()
@@ -33,6 +37,9 @@ module.exports = class RequestQuoteView extends RootView
     'click #facebook-signup-btn': 'onClickFacebookSignupButton'
     'change input[name="email"]': 'onChangeEmail'
     'change input[name="name"]': 'onChangeName'
+    'click #submit-request-btn': 'onClickRequestButton'
+
+  getTitle: -> $.i18n.t('new_home.request_quote')
 
   initialize: ->
     @trialRequest = new TrialRequest()
@@ -50,10 +57,17 @@ module.exports = class RequestQuoteView extends RootView
       checkNameValue: null
       checkNamePromise: null
       authModalInitialValues: {}
+      showUsaStateDropdown: true
+      stateValue: null
     }
+    @countries = countryList.getNames()
+    @usaStates = new UsaStates().states
+    @usaStatesAbbreviations = new UsaStates().arrayOf('abbreviations')
     @listenTo @state, 'change:checkEmailState', -> @renderSelectors('.email-check')
     @listenTo @state, 'change:checkNameState', -> @renderSelectors('.name-check')
     @listenTo @state, 'change:error', -> @renderSelectors('.error-area')
+    @listenTo @state, 'change:showUsaStateDropdown', -> @renderSelectors('.state')
+    @listenTo @state, 'change:stateValue', -> @renderSelectors('.state')
 
   onLeaveMessage: ->
     if @formChanged
@@ -73,6 +87,22 @@ module.exports = class RequestQuoteView extends RootView
     for key in SCHOOL_NCES_KEYS
       @$('input[name="nces_' + key + '"]').val ''
 
+  onChangeCountry: (e) ->
+    @invalidateNCES()
+
+    stateElem = @$('select[name="state"]')
+    if @$('[name="state"]').prop('nodeName') == 'INPUT'
+      stateElem = @$('input[name="state"]')
+    stateVal = stateElem.val()
+    @state.set({stateValue: stateVal})
+
+    if e.target.value == 'United States' 
+      @state.set({showUsaStateDropdown: true})
+      if !@usaStatesAbbreviations.includes(stateVal)
+        @state.set({stateValue: ''})
+    else
+      @state.set({showUsaStateDropdown: false})
+
   afterRender: ->
     super()
 
@@ -80,11 +110,6 @@ module.exports = class RequestQuoteView extends RootView
     properties = @trialRequest.get('properties')
     if properties
       forms.objectToForm(@$('#request-form'), properties)
-      commonLevels = _.map @$('[name="educationLevel"]'), (el) -> $(el).val()
-      submittedLevels = properties.educationLevel or []
-      otherLevel = _.first(_.difference(submittedLevels, commonLevels)) or ''
-      @$('#other-education-level-checkbox').attr('checked', !!otherLevel)
-      @$('#other-education-level-input').val(otherLevel)
 
     $("#organization-control").algolia_autocomplete({hint: false}, [
       source: (query, callback) ->
@@ -103,7 +128,10 @@ module.exports = class RequestQuoteView extends RootView
       @$('input[name="district"]').val suggestion.district
       @$('input[name="city"]').val suggestion.city
       @$('input[name="state"]').val suggestion.state
-      @$('input[name="country"]').val 'USA'
+      @$('select[name="state"]').val suggestion.state
+      @$('select[name="country"]').val 'United States'
+      @state.set({showUsaStateDropdown: true})
+      @state.set({stateValue: suggestion.state})
       for key in SCHOOL_NCES_KEYS
         @$('input[name="nces_' + key + '"]').val suggestion[key]
       @onChangeRequestForm()
@@ -124,7 +152,10 @@ module.exports = class RequestQuoteView extends RootView
       @$('input[name="organization"]').val '' # TODO: does not persist on tabbing: back to school, back to district
       @$('input[name="city"]').val suggestion.city
       @$('input[name="state"]').val suggestion.state
-      @$('input[name="country"]').val 'USA'
+      @$('select[name="state"]').val suggestion.state
+      @$('select[name="country"]').val 'United States'
+      @state.set({showUsaStateDropdown: true})
+      @state.set({stateValue: suggestion.state})
       for key in DISTRICT_NCES_KEYS
         @$('input[name="nces_' + key + '"]').val suggestion[key]
       @onChangeRequestForm()
@@ -134,6 +165,11 @@ module.exports = class RequestQuoteView extends RootView
       window.tracker?.trackEvent 'Teachers Request Demo Form Started', category: 'Teachers', ['Mixpanel']
     @formChanged = true
 
+  onClickRequestButton: (e) ->
+    eventAction = $(e.target).data('event-action')
+    if eventAction
+      window.tracker?.trackEvent(eventAction, category: 'Teachers')
+
   onSubmitRequestForm: (e) ->
     e.preventDefault()
     form = @$('#request-form')
@@ -142,11 +178,6 @@ module.exports = class RequestQuoteView extends RootView
 
     # Don't save n/a district entries, but do validate required district client-side
     trialRequestAttrs = _.omit(trialRequestAttrs, 'district') if trialRequestAttrs.district?.replace(/\s/ig, '').match(/n\/a/ig)
-
-    # custom other input logic
-    if @$('#other-education-level-checkbox').is(':checked')
-      val = @$('#other-education-level-input').val()
-      trialRequestAttrs.educationLevel.push(val) if val
 
     forms.clearFormAlerts(form)
     requestFormSchema = if me.isAnonymous() then requestFormSchemaAnonymous else requestFormSchemaLoggedIn
@@ -158,16 +189,30 @@ module.exports = class RequestQuoteView extends RootView
     if not error and not forms.validateEmail(trialRequestAttrs.email)
       forms.setErrorToProperty(form, 'email', 'invalid email')
       error = true
-    if not _.size(trialRequestAttrs.educationLevel)
-      forms.setErrorToProperty(form, 'educationLevel', 'include at least one')
-      error = true
+
     unless attrs.district
       forms.setErrorToProperty(form, 'district', $.i18n.t('common.required_field'))
       error = true
+
+    trialRequestAttrs['siteOrigin'] = 'demo request'
+
+    try
+      parsedName = parseFullName(trialRequestAttrs['fullName'], 'all', -1, true)
+      if parsedName.first and parsedName.last
+        trialRequestAttrs['firstName'] = parsedName.first
+        trialRequestAttrs['lastName'] = parsedName.last
+    catch e
+      # TODO handle_error_ozaria
+
+    if not trialRequestAttrs['firstName'] or not trialRequestAttrs['lastName']
+      error = true
+      forms.clearFormAlerts($('#full-name'))
+      forms.setErrorToProperty(form, 'fullName', $.i18n.t('teachers_quote.full_name_required'))
+
     if error
       forms.scrollToFirstError()
       return
-    trialRequestAttrs['siteOrigin'] = 'demo request'
+
     @trialRequest = new TrialRequest({
       type: 'course'
       properties: trialRequestAttrs
@@ -212,8 +257,9 @@ module.exports = class RequestQuoteView extends RootView
   onTrialRequestSubmit: ->
     window.tracker?.trackEvent 'Teachers Request Demo Form Submitted', category: 'Teachers', ['Mixpanel']
     @formChanged = false
-    me.setRole @trialRequest.get('properties').role.toLowerCase(), true
-    defaultName = [@trialRequest.get('firstName'), @trialRequest.get('lastName')].join(' ')
+    trialRequestProperties = @trialRequest.get('properties')
+    me.setRole trialRequestProperties.role.toLowerCase(), true
+    defaultName = [trialRequestProperties.firstName, trialRequestProperties.lastName].join(' ')
     @$('input[name="name"]').val(defaultName)
     @$('#request-form, #form-submit-success').toggleClass('hide')
     @scrollToTop(0)
@@ -299,6 +345,12 @@ module.exports = class RequestQuoteView extends RootView
       name: attrs.name
       email: @trialRequest.get('properties').email
     })
+    if me.inEU()
+      emails = _.assign({}, me.get('emails'))
+      emails.generalNews ?= {}
+      emails.generalNews.enabled = false
+      me.set('emails', emails)
+      me.set('unsubscribedFromMarketingEmails', true)
     me.save(null, {
       success: ->
         window.tracker?.trackEvent 'Teachers Request Demo Create Account', category: 'Teachers', ['Mixpanel']
@@ -306,7 +358,7 @@ module.exports = class RequestQuoteView extends RootView
         window.location.reload()
       error: errors.showNotyNetworkError
     })
-    
+
   updateAuthModalInitialValues: (values) ->
     @state.set {
       authModalInitialValues: _.merge @state.get('authModalInitialValues'), values
@@ -353,10 +405,10 @@ module.exports = class RequestQuoteView extends RootView
   onChangeEmail: (e) ->
     @updateAuthModalInitialValues { email: @$(e.currentTarget).val() }
     @checkEmail()
-    
+
   checkEmail: ->
     email = @$('[name="email"]').val()
-    
+
     if not _.isEmpty(email) and email is @state.get('checkEmailValue')
       return @state.get('checkEmailPromise')
 
@@ -367,11 +419,11 @@ module.exports = class RequestQuoteView extends RootView
         checkEmailPromise: null
       })
       return Promise.resolve()
-      
+
     @state.set({
       checkEmailState: 'checking'
       checkEmailValue: email
-      
+
       checkEmailPromise: (User.checkEmailExists(email)
       .then ({exists}) =>
         return unless email is @$('[name="email"]').val()
@@ -385,22 +437,18 @@ module.exports = class RequestQuoteView extends RootView
       )
     })
     return @state.get('checkEmailPromise')
-    
-
 
 requestFormSchemaAnonymous = {
   type: 'object'
   required: [
-    'firstName', 'lastName', 'email', 'role', 'purchaserRole', 'numStudents',
-    'numStudentsTotal', 'phoneNumber', 'city', 'state', 'country']
+    'fullName', 'email', 'role', 'numStudents', 'numStudentsTotal', 'city', 'state',
+    'country', 'organization', 'phoneNumber'
+  ]
   properties:
-    firstName: { type: 'string' }
-    lastName: { type: 'string' }
-    name: { type: 'string' }
+    fullName: { type: 'string' }
     email: { type: 'string', format: 'email' }
     phoneNumber: { type: 'string' }
     role: { type: 'string' }
-    purchaserRole: { type: 'string' }
     organization: { type: 'string' }
     district: { type: 'string' }
     city: { type: 'string' }
@@ -408,11 +456,6 @@ requestFormSchemaAnonymous = {
     country: { type: 'string' }
     numStudents: { type: 'string' }
     numStudentsTotal: { type: 'string' }
-    educationLevel: {
-      type: 'array'
-      items: { type: 'string' }
-    }
-    notes: { type: 'string' },
 }
 
 for key in SCHOOL_NCES_KEYS

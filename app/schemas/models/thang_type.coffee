@@ -15,6 +15,7 @@ ShapeObjectSchema = c.object {title: 'Shape'},
   ss: {type: 'array', title: 'Stroke Style'}
   t: c.array {}, {type: 'number', title: 'Transform'}
   m: {type: 'string', title: 'Mask'}
+  bounds: c.array {title: 'Bounds'}, {type: 'number'}
 
 ContainerObjectSchema = c.object {format: 'container'},
   b: c.array {title: 'Bounds'}, {type: 'number'}
@@ -44,6 +45,7 @@ RawAnimationObjectSchema = c.object {},
     gn: {type: 'string', title: 'Global Name'}
     t: c.array {}, {type: 'number', title: 'Transform'}
     a: c.array {title: 'Arguments'}
+    off: {type: 'bolean', title: 'Starts Hidden (_off)'}
   tweens: c.array {},
     c.array {title: 'Function Chain'},
       c.object {title: 'Function Call'},
@@ -109,7 +111,7 @@ _.extend ThangTypeSchema.properties,
   kind: c.shortString {enum: ['Unit', 'Floor', 'Wall', 'Doodad', 'Misc', 'Mark', 'Item', 'Hero', 'Missile'], default: 'Misc', title: 'Kind'}
   terrains: c.array {title: 'Terrains', description: 'If specified, limits this ThangType to levels with matching terrains.', uniqueItems: true}, c.terrainString
   gems: {type: 'integer', minimum: 0, title: 'Gem Cost', description: 'How many gems this item or hero costs.'}
-  subscriber: {type: 'boolean', title: 'Subscriber', description: 'This item is for subscribers only.'}
+  subscriber: {type: 'boolean', title: 'Subscriber (items only)', description: 'This item is for subscribers only.'}
   heroClass: {type: 'string', enum: ['Warrior', 'Ranger', 'Wizard'], title: 'Hero Class', description: 'What class this is (if a hero) or is restricted to (if an item). Leave undefined for most items.'}
   tier: {type: 'number', minimum: 0, title: 'Tier', description: 'What tier (fractional) this item or hero is in.'}
   actions: c.object {title: 'Actions', additionalProperties: {$ref: '#/definitions/action'}}
@@ -212,6 +214,7 @@ _.extend ThangTypeSchema.properties,
   restricted: {type: 'string', title: 'Restricted', description: 'If set, this ThangType will only be accessible by admins and whoever it is restricted to.'}
   releasePhase: { enum: ['beta', 'released'], description: "How far along the ThangType's development is, determining who sees it." }
   gender: { enum: ['female', 'male'], type: 'string', title: 'Hero Gender', description: 'Affects which paper doll image set and language pronouns to use.' }
+  ozaria: { type: 'boolean', description: 'Marks this thang as an Ozaria only type. Used to prevent Ozaria hero\'s from appearing in CodeCombat hero selector.'}
 
 ThangTypeSchema.required = []
 
@@ -227,5 +230,6 @@ c.extendSearchableProperties ThangTypeSchema
 c.extendVersionedProperties ThangTypeSchema, 'thang.type'
 c.extendPatchableProperties ThangTypeSchema
 c.extendTranslationCoverageProperties ThangTypeSchema
+c.extendAlgoliaProperties ThangTypeSchema
 
 module.exports = ThangTypeSchema

@@ -1,6 +1,28 @@
 Levels = require 'collections/Levels'
 utils = require 'core/utils'
 
+# Returns whether a user has started a course as well as if they've completed
+# all the required levels in the course.
+#
+# @param {Object<key=string, value=bool> | undefined} userLevels - Key value store of level original and completion state.
+# @param {Set<string>} levelsInCourse - *Required* level originals in the course.
+# @return {[bool, bool, int]} - user started value, allcomplete state and total levels completed.
+hasUserCompletedCourse = (userLevels, levelsInCourse) ->
+  userStarted = false
+  allComplete = true
+  completed = 0
+  userLevelsSeen = 0
+  for level, complete of userLevels when levelsInCourse.has level
+    userStarted = true
+    if complete
+      completed++
+    else
+      allComplete = false
+    userLevelsSeen++
+  allComplete = false unless userStarted
+
+  [userStarted, allComplete and userLevelsSeen == levelsInCourse.size, completed]
+
 module.exports =
   # Result: Each course instance gains a property, numCompleted, that is the
   #   number of students in that course instance who have completed ALL of
@@ -23,18 +45,16 @@ module.exports =
         instance.sessionsLoaded = true
         instance.numCompleted = 0
         instance.started = false
-        levelsInVersionedCourse = new Set (level.get('original') for level in classroom.getLevels({courseID: course.id}).models when not level.get('practice'))
+        levelsInVersionedCourse = new Set (level.get('original') for level in classroom.getLevels({courseID: course.id}).models when not
+          (level.get('practice') or level.get('assessment')))
+
+        levelsCompletedByStudents = 0
         for userID in instance.get('members')
-          userStarted = false
-          allComplete = true
-          for level, complete of userLevelsCompleted[userID] when levelsInVersionedCourse.has level
-            userStarted = true
-            if not complete
-              allComplete = false
-              break
-          allComplete = false unless userStarted
+          [userStarted, allComplete, levelsCompleted] = hasUserCompletedCourse(userLevelsCompleted[userID], levelsInVersionedCourse)
+          levelsCompletedByStudents += levelsCompleted
           instance.started ||= userStarted
           ++instance.numCompleted if allComplete
+        instance.percentLevelCompletion = Math.floor(levelsCompletedByStudents / (levelsInVersionedCourse.size * instance.get('members').length) * 100)
 
   calculateEarliestIncomplete: (classroom, courses, courseInstances, students) ->
     # Loop through all the combinations of things, return the first one that somebody hasn't finished
@@ -159,7 +179,7 @@ module.exports =
             numStarted: 0
             # numCompleted: 0
           }
-          isOptional = level.get('practice') or level.get('assessment')
+          isOptional = level.get('practice') or level.get('assessment') or level.isLadder()
           sessionsForLevel = _.filter classroom.sessions.models, (session) ->
             session.get('level').original is levelID
 
@@ -171,7 +191,7 @@ module.exports =
             sessions = _.filter sessionsForLevel, (session) ->
               session.get('creator') is userID
 
-            courseProgress[levelID][userID].session = _.find(sessions, (s) -> s.completed()) or _.first(sessions)
+            courseProgress[levelID][userID].session = (_.find(sessions, (s) -> s.completed()) or _.first(sessions))?.toJSON()
 
             if _.size(sessions) is 0 # haven't gotten to this level yet, but might have completed others before
               courseProgress.started ||= false unless isOptional #no-op
@@ -222,15 +242,9 @@ module.exports =
     return progressData
 
   courseLabelsArray: (courses) ->
-    labels = []
-    courseLabelIndexes = CS: 0, GD: 0, WD: 0
-    for course in courses
-      acronym = switch
-        when /game-dev/.test(course.get('slug')) then 'GD'
-        when /web-dev/.test(course.get('slug')) then 'WD'
-        else 'CS'
-      labels.push acronym + ++courseLabelIndexes[acronym]
-    labels
+    courses.map((course) -> course.acronym())
+
+  hasUserCompletedCourse: hasUserCompletedCourse
 
 progressMixin =
   get: (options={}) ->

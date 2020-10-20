@@ -188,15 +188,37 @@
     text-decoration: underline
     line-height: 16px
 
+  .certificate-link
+    text-align: center
+    text-decoration: underline
+    font-style: italic
+    font-weight: bold
+    font-size: 12px
+    color: black
+    img
+      display: block
+      margin: auto
+
+    &[disabled]
+      text-decoration: none
+      *
+        opacity: 0.5
+
+      div
+        display: inline-block
+
   // Reusable Progress Dot key
-  
+
   #progress-color-key-row
     .col
       min-height: 40px
+      svg
+        width: 34px
       .progress-dot
+        padding-top: 5px
+      .progress-dot, svg
         position: absolute
         top: 0
-        padding-top: 5px
         margin: 5px
         &.practice
           margin-left: 26px
@@ -231,6 +253,10 @@
       max-width: 880px
       margin: -5px
       margin-top: 5px
+
+    .student-levels-progress
+      // Make sure certificates are on the side and not below
+      min-height: 53px
 
     .progress-dot
       margin: 5px
@@ -380,7 +406,7 @@
       position: absolute
       top: 8px
       right: 5px
-  
+
   #license-status-table
     // These column widths are just to keep the cells from resizing on search
     .checkbox-col
@@ -430,7 +456,7 @@
     th
       font-size: 14px
       font-weight: normal
-      
+
     td, th
       position: relative
       text-align: center
@@ -438,18 +464,24 @@
     .student-name
       text-overflow: ellipsis
       overflow: hidden
-      
+
     .progress-dot
       margin-right: 0
-      
+
   .threshold-icon
     height: 1.2em
     margin-left: 0.3em
     position: relative
     top: -0.1em
-    
+
   .threshold-icon.over-progress-bubble
     height: 22px
     position: absolute
     top: 20px
     left: calc(50% - 3px)
+
+  .add-students-btn
+    padding: 11px 13px
+
+  .sync-google-classroom-btn
+    padding: 11px 11px

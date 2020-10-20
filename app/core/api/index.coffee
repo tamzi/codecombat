@@ -5,6 +5,7 @@ module.exports = {
   campaigns: require('./campaigns')
   clas: require('./clas')
   classrooms: require('./classrooms')
+  contact: require('./contact')
   courses: require('./courses')
   courseInstances: require('./course-instances')
   files: require('./files')
@@ -17,4 +18,6 @@ module.exports = {
   trialRequests: require('./trial-requests')
   userCodeProblems: require('./user-code-problems')
   users: require('./users')
+  apiClients: require('./api-clients')
+  oauth: require('./o-auth')
 }

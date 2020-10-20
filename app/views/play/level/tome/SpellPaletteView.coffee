@@ -49,7 +49,7 @@ module.exports = class SpellPaletteView extends CocoView
     c.defaultGroupSlug = @defaultGroupSlug
     c.showsHelp = @showsHelp
     c.tabs = @tabs  # For hero-based, non-this-owned tabs like Vector, Math, etc.
-    c.thisName = {coffeescript: '@', lua: 'self', python: 'self', java: 'hero'}[@options.language] or 'this'
+    c.thisName = {coffeescript: '@', lua: 'self', python: 'self', java: 'hero', cpp: 'hero'}[@options.language] or 'this'
     c._ = _
     c
 
@@ -120,6 +120,20 @@ module.exports = class SpellPaletteView extends CocoView
         @$el.find("#palette-tab-events").append t.el
         t.render()
 
+      if doc.type is "handler"
+        t = new SpellPaletteEntryView doc: doc, thang: @thang, shortenize: true, language: @options.language, level: @options.level, useHero: @useHero
+        @$el.find("#palette-tab-handlers").append t.el
+        t.render()
+
+      if doc.type is "property"
+        t = new SpellPaletteEntryView doc: doc, thang: @thang, shortenize: true, language: @options.language, level: @options.level, writable: true
+        @$el.find("#palette-tab-properties").append t.el
+        t.render()
+
+      if doc.type is "snippet" and @level.get('type') is 'game-dev'
+        t = new SpellPaletteEntryView doc: doc, thang: @thang, isSnippet: true, shortenize: true, language: @options.language, level: @options.level
+        @$el.find("#palette-tab-snippets").append t.el
+        t.render()
 
     @$(".section-header:has(+.collapse:empty)").hide()
 
@@ -296,12 +310,12 @@ module.exports = class SpellPaletteView extends CocoView
         prop = prop.prop
         doc = _.find (allDocs['__' + prop] ? []), (doc) ->
           return true if doc.owner is owner
-          return (owner is 'this' or owner is 'more') and (not doc.owner? or doc.owner is 'this')
+          return (owner is 'this' or owner is 'more') and (not doc.owner? or doc.owner is 'this' or doc.owner is 'ui')
         if not doc and not excludedDocs['__' + prop]
           console.log 'could not find doc for', prop, 'from', allDocs['__' + prop], 'for', owner, 'of', propsByItem, 'with item', item
           doc ?= prop
         if doc
-          if doc.type in ['spawnable', 'event']
+          if doc.type in ['spawnable', 'event', 'handler', 'property'] or (doc.type is 'snippet' and @level.get('type') is 'game-dev')
             @deferredDocs[doc.name] = doc
           else
             @entries.push @addEntry(doc, @shortenize, owner is 'snippets', item, propIndex > 0)

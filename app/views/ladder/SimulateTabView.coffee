@@ -3,6 +3,7 @@ CocoClass = require 'core/CocoClass'
 SimulatorsLeaderboardCollection = require 'collections/SimulatorsLeaderboardCollection'
 Simulator = require 'lib/simulator/Simulator'
 {me} = require 'core/auth'
+loadAetherLanguage = require("lib/loadAetherLanguage");
 
 module.exports = class SimulateTabView extends CocoView
   id: 'simulate-tab-view'
@@ -12,14 +13,15 @@ module.exports = class SimulateTabView extends CocoView
     'click #simulate-button': 'onSimulateButtonClick'
 
   initialize: ->
+    @simulatedByYouCount = me.get('simulatedBy') or 0
     @simulatorsLeaderboardData = new SimulatorsLeaderboardData(me)
     @simulatorsLeaderboardDataRes = @supermodel.addModelResource(@simulatorsLeaderboardData, 'top_simulators', {cache: false})
     @simulatorsLeaderboardDataRes.load()
-    require 'bower_components/aether/build/javascript'
-    require 'bower_components/aether/build/python'
-    require 'bower_components/aether/build/coffeescript'
-    require 'bower_components/aether/build/lua'
-    require 'bower_components/aether/build/java'
+    Promise.all(
+      ["javascript", "python", "coffeescript", "lua", "cpp"].map(
+        loadAetherLanguage
+      )
+    )
 
   onLoaded: ->
     super()
@@ -37,7 +39,7 @@ module.exports = class SimulateTabView extends CocoView
     @startSimulating()
 
   startSimulating: ->
-    @simulationPageRefreshTimeout = _.delay @refreshAndContinueSimulating, 30 * 60 * 1000
+    @simulationPageRefreshTimeout = _.delay @refreshAndContinueSimulating, 10 * 60 * 1000
     @simulateNextGame()
     $('#simulate-button').prop 'disabled', true
     $('#simulate-button').text 'Simulating...'
@@ -65,8 +67,10 @@ module.exports = class SimulateTabView extends CocoView
     @simulator.fetchAndSimulateTask()
 
   refresh: ->
-    return  # Queue-based scoring is currently not active anyway, so don't keep checking this until we fix it.
-    success = (numberOfGamesInQueue) ->
+    return unless @simulatorsLeaderboardData.numberOfGamesInQueue > 0  # Queue-based scoring is currently not active anyway, so don't keep checking this until we fix it.
+    success = (numberOfGamesInQueue) =>
+      return if @destroyed
+      @simulatorsLeaderboardData.numberOfGamesInQueue = numberOfGamesInQueue
       $('#games-in-queue').text numberOfGamesInQueue
     $.ajax '/queue/messagesInQueueCount', cache: false, success: success
 
@@ -88,6 +92,10 @@ module.exports = class SimulateTabView extends CocoView
       console.log "There was a problem with the named simulation status: #{e}"
     link = if @simulationSpectateLink then "<a href=#{@simulationSpectateLink}>#{_.string.escapeHTML(@simulationMatchDescription)}</a>" else ''
     $('#simulation-status-text').html "<h3>#{@simulationStatus}</h3>#{link}"
+    if simulationStatus is 'Results were successfully sent back to server!'
+      $('#games-in-queue').text --@simulatorsLeaderboardData.numberOfGamesInQueue
+      $('#simulated-by-you').text ++@simulatedByYouCount
+
 
   destroy: ->
     clearTimeout @simulationPageRefreshTimeout

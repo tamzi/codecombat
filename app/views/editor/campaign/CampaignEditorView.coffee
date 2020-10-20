@@ -97,7 +97,7 @@ module.exports = class CampaignEditorView extends RootView
     # Load any levels which haven't been denormalized into our campaign.
     return unless @campaign.loaded and @levels.loaded and @achievements.loaded
     @loadMissingLevelsAndRelatedModels()
-    
+
   loadMissingLevelsAndRelatedModels: ->
     promises = []
     for level in _.values(@campaign.get('levels'))
@@ -126,6 +126,10 @@ module.exports = class CampaignEditorView extends RootView
     @updateCampaignLevels()
     @campaignView.render()
     super()
+    if window.location.hash
+      levelSlug = window.location.hash.substring(1)
+      levelOriginal = _.find(@campaign.get('levels'), slug: levelSlug).original
+      @openCampaignLevelView @supermodel.getModelByOriginal Level, levelOriginal
 
   updateCampaignLevels: ->
     @toSave.add @campaign if @campaign.hasLocalChanges()
@@ -141,9 +145,7 @@ module.exports = class CampaignEditorView extends RootView
       campaignLevel.rewards = @formatRewards level
       # Save campaign to level if it's a main 'hero' campaign so HeroVictoryModal knows where to return.
       # (Not if it's a defaulted, typeless campaign like game-dev-hoc or auditions.)
-      campaignLevel.campaign = @campaign.get 'slug' if @campaign.get('type') is 'hero'
-      # Save campaign index to level if it's a course campaign, since we show linear level order numbers for course levels.
-      campaignLevel.campaignIndex = (@levels.models.length - levelIndex - 1) if @campaign.get('type', true) is 'course'
+      campaignLevel.campaign = @campaign.get 'slug' if @campaign.get('type') is 'hero' or @campaign.get('isOzaria')
       campaignLevels[levelOriginal] = campaignLevel
 
     @campaign.set('levels', campaignLevels)
@@ -241,6 +243,7 @@ module.exports = class CampaignEditorView extends RootView
       nodeClasses:
         levels: LevelsNode
         level: LevelNode
+        nextLevel: NextLevelNode 
         campaigns: CampaignsNode
         campaign: CampaignNode
         achievement: AchievementNode
@@ -394,6 +397,12 @@ class LevelNode extends TreemaObjectNode
   populateData: ->
     return if @data.name?
     data = _.pick LevelsNode.levels[@keyForParent].attributes, Campaign.denormalizedLevelProperties
+    _.extend @data, data
+
+class NextLevelNode extends LevelNode
+  populateData: ->
+    return if @data.name?
+    data = _.pick LevelsNode.levels[@keyForParent].attributes, ['original', 'name', 'slug', 'type']
     _.extend @data, data
 
 class CampaignsNode extends TreemaObjectNode

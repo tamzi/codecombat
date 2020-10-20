@@ -3,6 +3,21 @@ app = null
 utils = require './utils'
 { installVueI18n } = require 'locale/locale'
 
+VueRouter = require 'vue-router'
+Vuex = require 'vuex'
+VTooltip = require 'v-tooltip'
+VueMoment = require 'vue-moment'
+VueMeta = require 'vue-meta'
+VueYoutube = require 'vue-youtube'
+
+Vue.use(VueRouter.default)
+Vue.use(Vuex.default)
+Vue.use(VueMoment.default)
+Vue.use(VueYoutube.default)
+
+Vue.use(VTooltip.default)
+Vue.use(VueMeta)
+
 channelSchemas =
   'auth': require 'schemas/subscriptions/auth'
   'bus': require 'schemas/subscriptions/bus'
@@ -54,21 +69,24 @@ handleNormalUrls = ->
   $(document).on 'click', "a[href^='/']", (event) ->
 
     href = $(event.currentTarget).attr('href')
+    target = $(event.currentTarget).attr('target')
 
     # chain 'or's for other black list routes
     passThrough = href.indexOf('sign_out') >= 0
 
     # Allow shift+click for new tabs, etc.
-    if !passThrough && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
-      event.preventDefault()
+    if passThrough or event.altKey or event.ctrlKey or event.metaKey or event.shiftKey or target is '_blank'
+      return
 
-      # Remove leading slashes and hash bangs (backward compatablility)
-      url = href.replace(/^\//,'').replace('\#\!\/','')
+    event.preventDefault()
 
-      # Instruct Backbone to trigger routing events
-      app.router.navigate url, { trigger: true }
+    # Remove leading slashes and hash bangs (backward compatablility)
+    url = href.replace(/^\//,'').replace('\#\!\/','')
 
-      return false
+    # Instruct Backbone to trigger routing events
+    app.router.navigate url, { trigger: true }
+
+    return false
 
 setUpBackboneMediator = ->
   Backbone.Mediator.addDefSchemas schemas for definition, schemas of definitionSchemas
@@ -111,6 +129,7 @@ watchForErrors = ->
 
   showError = (text) ->
     return if currentErrors >= 3
+    return if app.isProduction() and not me.isAdmin() # Don't show noty error messages in production when not an admin
     return unless me.isAdmin() or document.location.href.search(/codecombat.com/) is -1 or document.location.href.search(/\/editor\//) isnt -1
     ++currentErrors
     unless webkit?.messageHandlers  # Don't show these notys on iPad

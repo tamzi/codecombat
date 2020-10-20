@@ -1,9 +1,10 @@
 require('app/styles/teachers/teacher-course-solution-view.sass')
 utils = require 'core/utils'
 RootView = require 'views/core/RootView'
-CocoCollection = require 'collections/CocoCollection'
 Course = require 'models/Course'
 Level = require 'models/Level'
+Prepaids = require 'collections/Prepaids'
+Levels = require 'collections/Levels'
 utils = require 'core/utils'
 ace = require('lib/aceContainer')
 aceUtils = require 'core/aceUtils'
@@ -12,35 +13,63 @@ module.exports = class TeacherCourseSolutionView extends RootView
   id: 'teacher-course-solution-view'
   template: require 'templates/teachers/teacher-course-solution-view'
 
-  getTitle: -> $.i18n.t('teacher.course_solution')
+  events:
+    'click .nav-link': 'onClickSolutionTab'
+    'click .print-btn': 'onClickPrint'
+
+  onClickSolutionTab: (e) ->
+    link = $(e.target).closest('a')
+    levelSlug = link.data('level-slug')
+    solutionIndex = link.data('solution-index')
+    tracker.trackEvent('Click Teacher Course Solution Tab', {levelSlug, solutionIndex})
+
+  onClickPrint: ->
+    window.tracker?.trackEvent 'Teachers Click Print Solution', { category: 'Teachers', label: @courseID + "/" + @language }
+
+  getTitle: ->
+    title = $.i18n.t('teacher.course_solution')
+    title += " " + @course.acronym()
+    if @language != "html"
+      title +=  " " + utils.capitalLanguages[@language]
+    title
 
   initialize: (options, @courseID, @language) ->
     if me.isTeacher() or me.isAdmin()
       @prettyLanguage = @camelCaseLanguage(@language)
       @course = new Course(_id: @courseID)
       @supermodel.trackRequest(@course.fetch())
-      @levels = new CocoCollection([], { url: "/db/course/#{@courseID}/level-solutions", model: Level})
+      @levels = new Levels([], { url: "/db/course/#{@courseID}/level-solutions"})
       @supermodel.loadCollection(@levels, 'levels', {cache: false})
+
       @levelNumberMap = {}
+      @prepaids = new Prepaids()
+      @supermodel.trackRequest @prepaids.fetchMineAndShared()
+    @paidTeacher = me.isAdmin() or me.isPaidTeacher()
+    me.getClientCreatorPermissions()?.then(() => @render?())
     super(options)
 
   camelCaseLanguage: (language) ->
     return language if _.isEmpty(language)
     return 'JavaScript' if language is 'javascript'
+    return 'C++' if language is 'cpp'
     language.charAt(0).toUpperCase() + language.slice(1)
 
   hideWrongLanguage: (s) ->
     return '' unless s
     s.replace /```([a-z]+)[^`]+```/gm, (a, l) =>
+      return """```cpp
+       #{utils.translatejs2cpp(a[13..a.length-4], false)}
+       ```""" if @language is 'cpp' and l is 'javascript'
       return '' if l isnt @language
       a
 
-
   onLoaded: ->
+    @paidTeacher = @paidTeacher or @prepaids.find((p) => p.get('type') in ['course', 'starter_license'] and p.get('maxRedeemers') > 0)?
     @listenTo me, 'change:preferredLanguage', @updateLevelData
     @updateLevelData()
 
   updateLevelData: ->
+    @levelSolutionsMap = @levels.getSolutionsMap([@language])
     for level in @levels?.models
       articles = level.get('documentation')?.specificArticles
       if articles
@@ -53,24 +82,17 @@ module.exports = class TeacherCourseSolutionView extends RootView
       programmableMethod = comp?.config.programmableMethods.plan
       if programmableMethod
         try
-          translatedDefaultCode = _.template(programmableMethod.languages[level.get('primerLanguage') or @language] or programmableMethod.source)(utils.i18n(programmableMethod, 'context'))
+          defaultCode = programmableMethod.languages[level.get('primerLanguage') or @language] or (@language == 'cpp' and utils.translatejs2cpp(programmableMethod.source)) or programmableMethod.source
+          translatedDefaultCode = _.template(defaultCode)(utils.i18n(programmableMethod, 'context'))
         catch e
           console.error('Broken solution for level:', level.get('name'))
+          console.log(e)
+          console.log(defaultCode)
           continue
         # See if it has <playercode> tags, extract them
         playerCodeTag = utils.extractPlayerCodeTag(translatedDefaultCode)
         finalDefaultCode = if playerCodeTag then playerCodeTag else translatedDefaultCode
         level.set 'begin', finalDefaultCode
-        solution = _.find(programmableMethod.solutions, (x) => x.language is (level.get('primerLanguage') or @language))
-        try
-          solutionText = _.template(solution?.source)(utils.i18n(programmableMethod, 'context'))
-        catch error
-          solutionText = solution?.source
-          console.error "Couldn't create solution template of", solution?.source, "\nwith context", programmableMethod.context, "\nError:", error
-        solutionPlayerCodeTag = utils.extractPlayerCodeTag(solutionText)
-        finalSolutionCode = if solutionPlayerCodeTag then solutionPlayerCodeTag else solutionText
-        finalSolutionCode = @fingerprint finalSolutionCode
-        level.set 'solution',  finalSolutionCode
     levels = []
     for level in @levels?.models when level.get('original')
       continue if @language? and level.get('primerLanguage') is @language
@@ -80,24 +102,18 @@ module.exports = class TeacherCourseSolutionView extends RootView
         assessment: level.get('assessment') ? false
       })
     @levelNumberMap = utils.createLevelNumberMap(levels)
+    if @course?.id == utils.courseIDs.WEB_DEVELOPMENT_2
+      # Filter out non numbered levels.
+      @levels.models = @levels.models.filter((l) => l.get('original') of @levelNumberMap)
     @render?()
 
   afterRender: ->
     super()
-    lang = @language
-    @$el.find('pre>code').each ->
-      els = $(@)
-      c = els.parent()
-      aceEditor = aceUtils.initializeACE c[0], lang
+    @$el.find('pre:has(code[class*="lang-"])').each ->
+      codeElem = $(@).first().children().first()
+      lang = mode for mode of aceUtils.aceEditModes when codeElem?.hasClass('lang-' + mode)
+      aceEditor = aceUtils.initializeACE(@, lang or 'python')
       aceEditor.setShowInvisibles false
       aceEditor.setBehavioursEnabled false
       aceEditor.setAnimatedScroll false
       aceEditor.$blockScrolling = Infinity
-
-  fingerprint: (code) ->
-    # Add a zero-width-space at the end of every comment line
-    switch @language
-      when 'javascript' then code.replace /^(\/\/.*)/gm, "$1​"
-      when 'lua' then code.replace /^(--.*)/gm, "$1​"
-      when 'html' then code.replace /^(<!--.*)-->/gm, "$1​-->"
-      else code.replace /^(#.*)/gm, "$1​"

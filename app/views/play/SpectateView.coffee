@@ -57,17 +57,26 @@ module.exports = class SpectateLevelView extends RootView
     console.profile?() if PROFILE_ME
     super options
 
+    @isEditorPreview = utils.getQueryVariable 'dev'
     @sessionOne = utils.getQueryVariable 'session-one'
     @sessionTwo = utils.getQueryVariable 'session-two'
     if options.spectateSessions
       @sessionOne = options.spectateSessions.sessionOne
       @sessionTwo = options.spectateSessions.sessionTwo
 
+    if @isEditorPreview
+      @supermodel.shouldSaveBackups = (model) ->  # Make sure to load possibly changed things from localStorage.
+        model.constructor.className in ['Level', 'LevelComponent', 'LevelSystem', 'ThangType']
+      f = => @loadRandomSessions?() unless @levelLoader  # Wait to see if it's just given to us through setLevel.
+      setTimeout f, 100
+    else
+      @loadRandomSessions()
+
+  loadRandomSessions: ->
     if not @sessionOne or not @sessionTwo
       @fetchRandomSessionPair (err, data) =>
         if err? then return console.log "There was an error fetching the random session pair: #{data}"
-        @sessionOne = data[0]._id
-        @sessionTwo = data[1]._id
+        @setSessions(data[0]._id, data[1]._id)
         @load()
     else
       @load()
@@ -134,6 +143,9 @@ module.exports = class SpectateLevelView extends RootView
     @levelLoader = null
 
   loadOpponentTeam: (myTeam) ->
+    if myTeam != @session.get('team')
+      console.error("Team mismatch. Expected session one to be '#{myTeam}'. Got '#{@session.get('team')}'");
+
     opponentSpells = []
     for spellTeam, spells of @session.get('teamSpells') ? @otherSession?.get('teamSpells') ? {}
       continue if spellTeam is myTeam or not myTeam
@@ -268,12 +280,24 @@ module.exports = class SpectateLevelView extends RootView
       continue unless sound = AudioPlayer.soundForDialogue message, thangType.get('soundTriggers')
       AudioPlayer.preloadSoundReference sound
 
+  setSessions: (sessionOne, sessionTwo) ->
+    @sessionOne = sessionOne
+    @sessionTwo = sessionTwo
+    # The order of the sessions depends on the playable teams. The API endpoint always returns
+    # the human team as session 1 and the ogre team as session 2.
+    # However the playable team order defined in the level editor must match the sessions.
+    # Zero Sum has specified Ogres before Humans, thus causing the wrong sessions to be placed.
+    # This can be confirmed in the level editor: zero sum -> Systems -> Alliance -> config -> teams.
+    # TODO: Investigate if there is a cleaner fix, maybe by modifying Zero Sum config.
+    if @levelID == "zero-sum"
+      @sessionOne = sessionTwo
+      @sessionTwo = sessionOne
+
   onNextGamePressed: (e) ->
     @fetchRandomSessionPair (err, data) =>
       return if @destroyed
       if err? then return console.log "There was an error fetching the random session pair: #{data}"
-      @sessionOne = data[0]._id
-      @sessionTwo = data[1]._id
+      @setSessions(data[0]._id, data[1]._id)
       url = "/play/spectate/#{@levelID}?session-one=#{@sessionOne}&session-two=#{@sessionTwo}"
       if leagueID = utils.getQueryVariable 'league'
         url += "&league=" + leagueID

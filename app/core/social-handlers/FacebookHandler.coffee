@@ -11,8 +11,10 @@ userPropsToSave =
   'email': 'email'
   'id': 'facebookID'
 
-
 module.exports = FacebookHandler = class FacebookHandler extends CocoClass
+  constructor: ->
+    unless me.useSocialSignOn() then throw new Error('Social single sign on not supported')
+    super()
 
   token: -> @authResponse?.accessToken
 
@@ -20,7 +22,7 @@ module.exports = FacebookHandler = class FacebookHandler extends CocoClass
   apiLoaded: false
   connected: false
   person: null
-  
+
   fakeAPI: ->
     window.FB =
       login: (cb, options) ->
@@ -43,7 +45,7 @@ module.exports = FacebookHandler = class FacebookHandler extends CocoClass
       options.success.bind(options.context)()
     else
       @once 'load-api', options.success, options.context
-    
+
     if not @startedLoading
       # Load the SDK asynchronously
       @startedLoading = true
@@ -56,7 +58,7 @@ module.exports = FacebookHandler = class FacebookHandler extends CocoClass
         js.id = id
         js.async = true
         js.src = '//connect.facebook.net/en_US/sdk.js'
-    
+
         #js.src = '//connect.facebook.net/en_US/all/debug.js'
         ref.parentNode.insertBefore js, ref
         return
@@ -68,7 +70,7 @@ module.exports = FacebookHandler = class FacebookHandler extends CocoClass
           channelUrl: document.location.origin + '/channel.html' # Channel File
           cookie: true # enable cookies to allow the server to access the session
           xfbml: true # parse XFBML
-          version: 'v2.8'
+          version: 'v3.2'
         })
         FB.getLoginStatus (response) =>
           if response.status is 'connected'

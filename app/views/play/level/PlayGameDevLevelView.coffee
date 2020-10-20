@@ -30,7 +30,6 @@ module.exports = class PlayGameDevLevelView extends RootView
 
   subscriptions:
     'god:new-world-created': 'onNewWorld'
-    'surface:ticked': 'onSurfaceTicked'
     'god:streaming-world-updated': 'onStreamingWorldUpdated'
 
   events:
@@ -40,12 +39,19 @@ module.exports = class PlayGameDevLevelView extends RootView
     'click #play-more-codecombat-btn': 'onClickPlayMoreCodeCombatButton'
 
   initialize: (@options, @sessionID) ->
+    super(@options)
+
     @state = new State({
       loading: true
       progress: 0
       creatorString: ''
       isOwner: false
     })
+
+    $(window).keydown (event) ->
+      # prevent space from scrolling on the page since it can be used as a control in the game.
+      if (event.keyCode == 32 && event.target == document.body)
+        event.preventDefault()
 
     if utils.getQueryVariable 'dev'
       @supermodel.shouldSaveBackups = (model) ->  # Make sure to load possibly changed things from localStorage.
@@ -73,6 +79,11 @@ module.exports = class PlayGameDevLevelView extends RootView
 
     .then (levelLoader) =>
       { @level, @session, @world } = levelLoader
+
+      @setMeta({
+        title: $.i18n.t 'play.game_development_title', { level: @level.get('name') }
+      })
+
       @god.setLevel(@level.serialize {@supermodel, @session})
       @god.setWorldClassMap(@world.classMap)
       @goalManager = new GoalManager(@world, @level.get('goals'), @team)
@@ -135,12 +146,23 @@ module.exports = class PlayGameDevLevelView extends RootView
       }
       window.tracker?.trackEvent 'Play GameDev Level - Load', @eventProperties, ['Mixpanel']
       @insertSubView new GameDevTrackView {} if @level.isType('game-dev')
-      worldCreationOptions = {spells: @spells, preload: false, realTime: false, justBegin: true, keyValueDb: @session.get('keyValueDb') ? {}}
+      # Load a realtime, synchronous world to get uiText properties off the world object.
+      # We don't want the world to be playable immediately so calling updateStudentGoals
+      # replaces this world with the first frame of the world level.
+      worldCreationOptions = {spells: @spells, preload: false, realTime: true, justBegin: false, keyValueDb: @session.get('keyValueDb') ? {}, synchronous: true}
       @god.createWorld(worldCreationOptions)
+      @willUpdateFrontEnd = true
 
     .catch (e) =>
       throw e if e.stack
       @state.set('errorMessage', e.message)
+
+  getMeta: ->
+    return {
+      links: [
+        { vmid: 'rel-canonical', rel: 'canonical', href: '/play'}
+      ]
+    }
 
   onEditLevelButton: ->
     viewClass = 'views/play/level/PlayLevelView'
@@ -153,6 +175,7 @@ module.exports = class PlayGameDevLevelView extends RootView
     }
 
   onClickPlayButton: ->
+    $('#play-btn').blur()   # Removes focus from the button after clicking on it.
     worldCreationOptions = {spells: @spells, preload: false, realTime: true, justBegin: false, keyValueDb: @session.get('keyValueDb') ? {}, synchronous: true}
     @god.createWorld(worldCreationOptions)
     Backbone.Mediator.publish('playback:real-time-playback-started', {})
@@ -180,22 +203,47 @@ module.exports = class PlayGameDevLevelView extends RootView
 
   onNewWorld: (e) ->
     if @goalManager.checkOverallStatus() is 'success'
-      modal = new GameDevVictoryModal({ shareURL: @state.get('shareURL'), @eventProperties })
+      modal = new GameDevVictoryModal({ shareURL: @state.get('shareURL'), @eventProperties, @victoryMessage })
       @openModalView(modal)
       modal.once 'replay', @onClickPlayButton, @
 
-  onSurfaceTicked: (e) ->
+  updateStudentGoals: ->
     return if @studentGoals
-    goals = @surface.world?.thangMap?['Hero Placeholder']?.stringGoals
-    return unless _.size(goals)
-    @updateRealTimeGoals(goals)
+    # Set by users. Defined in `game.GameUI` component in the level editor.
+    if @world.uiText?.directions?.length
+      @studentGoals = @world.uiText.directions.map((direction) -> {type: "user_defined", direction})
+    else
+      @studentGoals = @world.thangMap['Hero Placeholder'].stringGoals?.map((g) -> JSON.parse(g))
+    return unless _.size(@studentGoals)
+    @updateRealTimeGoals()
+    worldCreationOptions = {spells: @spells, preload: false, realTime: false, justBegin: true, keyValueDb: @session.get('keyValueDb') ? {}}
+    @god.createWorld(worldCreationOptions)
 
   updateRealTimeGoals: (goals) ->
-    @studentGoals = goals?.map((g) -> JSON.parse(g))
+    if goals?
+      @studentGoals = goals?.map((g) -> JSON.parse(g))
     @renderSelectors '#directions'
 
   onStreamingWorldUpdated: (e) ->
+    @world = e.world
+    if @world.age > 0 and @willUpdateFrontEnd
+      @willUpdateFrontEnd = false
+      @updateStudentGoals()
+      @updateLevelName()
+      @updateVictoryMessage()
     @updateDb()
+
+  updateLevelName: ->
+    if @world.uiText?.levelName
+      @levelName = @world.uiText.levelName
+      @renderSelectors '#directions'
+
+  updateVictoryMessage: ->
+    if @world.uiText?.victoryMessage
+      @victoryMessage = @world.uiText?.victoryMessage
+
+  getLevelName: () ->
+    @levelName ? @level.get('name')
 
   updateDb: ->
     return unless @state?.get('playing')
@@ -210,4 +258,5 @@ module.exports = class PlayGameDevLevelView extends RootView
     @goalManager?.destroy()
     @scriptManager?.destroy()
     delete window.world # not sure where this is set, but this is one way to clean it up
+    $(window).off("keydown")
     super()

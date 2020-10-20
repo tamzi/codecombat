@@ -4,6 +4,7 @@ ModalView = require 'views/core/ModalView'
 template = require 'templates/play/menu/inventory-modal'
 buyGemsPromptTemplate = require 'templates/play/modal/buy-gems-prompt'
 earnGemsPromptTemplate = require 'templates/play/modal/earn-gems-prompt'
+subscribeForGemsPrompt = require 'templates/play/modal/subscribe-for-gems-prompt'
 {me} = require 'core/auth'
 ThangType = require 'models/ThangType'
 ThangTypeLib = require 'lib/ThangTypeLib'
@@ -43,6 +44,7 @@ module.exports = class InventoryModal extends ModalView
     'click #subscriber-item-viewed': 'onClickSubscribeItemViewed'
     'click #close-modal': 'hide'
     'click .buy-gems-prompt-button': 'onBuyGemsPromptButtonClicked'
+    'click .start-subscription-button': 'onSubscribeButtonClicked'
     'click': 'onClickedSomewhere'
     'update #unequipped .nano': 'onScrollUnequipped'
 
@@ -92,6 +94,7 @@ module.exports = class InventoryModal extends ModalView
     @equipment = {}  # Assign for real when we have loaded the session and items.
 
   onItemsLoaded: ->
+    console.log("Inside onItemsLoaded")
     for item in @items.models
       item.notInLevel = true
       programmableConfig = _.find(item.get('components'), (c) -> c.config?.programmableProperties)?.config
@@ -102,6 +105,7 @@ module.exports = class InventoryModal extends ModalView
     else
       @equipment = @options.equipment or @options.session?.get('heroConfig')?.inventory or me.get('heroConfig')?.inventory or {}
     @equipment = $.extend true, {}, @equipment
+    console.log("requireLevelEquipment called from onItemsLoaded")
     @requireLevelEquipment()
     @itemGroups = {}
     @itemGroups.requiredPurchaseItems = new Backbone.Collection()
@@ -115,6 +119,7 @@ module.exports = class InventoryModal extends ModalView
     @sortItem(item, equipped) for item in @items.models
 
   sortItem: (item, equipped) ->
+    console.log("Inside sortItem")
     equipped ?= _.values(@equipment)
 
     # general starting classes
@@ -179,11 +184,13 @@ module.exports = class InventoryModal extends ModalView
     item.level = item.levelRequiredForItem() if item.get('tier')?
 
   onLoaded: ->
+    console.log("Inside onLoaded")
     # Both items and session have been loaded.
     @onItemsLoaded()
     super()
 
   getRenderData: (context={}) ->
+    console.log("Inside getRenderData")
     context = super(context)
     context.equipped = _.values(@equipment)
     context.items = @items.models
@@ -197,6 +204,7 @@ module.exports = class InventoryModal extends ModalView
     context
 
   afterRender: ->
+    console.log("Inside afterRender")
     super()
     @$el.find('#play-level-button').css('visibility', 'hidden')
     return unless @supermodel.finished()
@@ -207,21 +215,25 @@ module.exports = class InventoryModal extends ModalView
     @delegateEvents()
     @itemDetailsView = new ItemDetailsView()
     @insertSubView(@itemDetailsView)
+    console.log("requireLevelEquipment called from afterRender")
     @requireLevelEquipment()
     @$el.find('.nano').nanoScroller({alwaysVisible: true})
     @onSelectionChanged()
     @onEquipmentChanged()
 
   afterInsert: ->
+    console.log("Inside afterInsert")
     super()
     @canvasWidth = @$el.find('canvas').innerWidth()
     @canvasHeight = @$el.find('canvas').innerHeight()
     @inserted = true
+    console.log("requireLevelEquipment called from afterInsert")
     @requireLevelEquipment()
 
   #- Draggable logic
 
   setUpDraggableEventsForAvailableEquipment: ->
+    console.log("Inside setUpDraggableEventForAvailableEquipment")
     for availableItemEl in @$el.find('#unequipped .item')
       availableItemEl = $(availableItemEl)
       continue if availableItemEl.hasClass('locked') or availableItemEl.hasClass('restricted')
@@ -239,6 +251,7 @@ module.exports = class InventoryModal extends ModalView
         availableItemEl.on 'dragstart', => @selectUnequippedItem(availableItemEl)
 
   setUpDraggableEventsForEquippedArea: ->
+    console.log("Inside setUpDraggableEventsForEquippedArea")
     for itemSlot in @$el.find '.item-slot'
       slot = $(itemSlot).data 'slot'
       do (slot, itemSlot) =>
@@ -258,6 +271,7 @@ module.exports = class InventoryModal extends ModalView
       tolerance: 'pointer'
 
   makeEquippedSlotDraggable: (slot) ->
+    console.log("Inside makeEquippedSlotDraggable")
     unequip = =>
       itemEl = @unequipItemFromSlot slot
       selectedSlotItemID = itemEl.data('item-id')
@@ -286,11 +300,13 @@ module.exports = class InventoryModal extends ModalView
   #- Select/equip event handlers
 
   onItemSlotClick: (e) ->
+    @closePopover()
     return if @remainingRequiredEquipment?.length  # Don't let them select a slot if we need them to first equip some require gear.
     #@playSound 'menu-button-click'
     @selectItemSlot($(e.target).closest('.item-slot'))
 
   onUnequippedItemClick: (e) ->
+    @closePopover()
     return if @justDoubleClicked
     return if @justClickedEquipItemButton
     itemEl = $(e.target).closest('.item')
@@ -437,6 +453,8 @@ module.exports = class InventoryModal extends ModalView
     config
 
   requireLevelEquipment: ->
+    console.log("Inside requireLevelEquipment")
+    console.log(@items)
     # This is called frequently to make sure the player isn't using any restricted items and knows she must equip any required items.
     return unless @inserted and @itemsProgrammablePropertiesConfigured
     equipment = if @supermodel.finished() then @getCurrentEquipmentConfig() else @equipment  # Make sure we're using latest equipment.
@@ -446,12 +464,14 @@ module.exports = class InventoryModal extends ModalView
     @unequipClassRestrictedItems equipment
     @unequipLevelRestrictedItems equipment
     @updateLevelRequiredItems equipment
+    console.log("@remainingRequiredEquipment.length: " + @remainingRequiredEquipment.length)
     if hadRequired and not @remainingRequiredEquipment.length
       @endHighlight()
       @highlightElement '#play-level-button', duration: 5000
     $('#play-level-button').prop('disabled', @remainingRequiredEquipment.length > 0)
 
   unequipClassRestrictedItems: (equipment) ->
+    console.log("Inside unequipClassRestrictedItems")
     return unless @supermodel.finished() and heroClass = @selectedHero?.get 'heroClass'
     for slot, item of _.clone equipment
       itemModel = @items.findWhere original: item
@@ -461,7 +481,7 @@ module.exports = class InventoryModal extends ModalView
         delete equipment[slot]
 
   calculateRequiredGearPerSlot: ->
-    return {} if me.isStudent() and not application.getHocCampaign()
+    return {} if me.isStudent() and not application.getHocCampaign() and not me.showGearRestrictionsInClassroom()
     return @requiredGearPerSlot if @requiredGearPerSlot
     requiredGear = _.clone(@options.level.get('requiredGear')) ? {}
     requiredProperties = @options.level.get('requiredProperties') ? []
@@ -482,7 +502,7 @@ module.exports = class InventoryModal extends ModalView
     @requiredGearPerSlot
 
   calculateRestrictedGearPerSlot: ->
-    return {} if me.isStudent() and not application.getHocCampaign()
+    return {} if me.isStudent() and not application.getHocCampaign() and not me.showGearRestrictionsInClassroom()
     return @restrictedGearPerSlot if @restrictedGearPerSlot
     @calculateRequiredGearPerSlot() unless @requiredGearPerSlot
     restrictedGear = _.clone(@options.level.get('restrictedGear')) ? {}
@@ -500,6 +520,7 @@ module.exports = class InventoryModal extends ModalView
     @restrictedGearPerSlot
 
   unequipLevelRestrictedItems: (equipment) ->
+    console.log("Inside unequipLevelRestrictedItems")
     restrictedGear = @calculateRestrictedGearPerSlot()
     for slot, items of restrictedGear
       for item in items
@@ -511,8 +532,10 @@ module.exports = class InventoryModal extends ModalView
     null
 
   updateLevelRequiredItems: (equipment) ->
+    console.log("inside updateLevelRequiredItems")
     return unless heroClass = @selectedHero?.get 'heroClass'
     requiredGear = @calculateRequiredGearPerSlot()
+    console.log("inside executtion of updateLevelRequiredItems")
     for slot, items of requiredGear when items.length
       if slot in @ringSlots
         validSlots = @ringSlots
@@ -596,6 +619,7 @@ module.exports = class InventoryModal extends ModalView
     window.tracker?.trackEvent 'Inventory Play', category: 'Play Level', level: levelSlug
 
   updateConfig: (callback, skipSessionSave) ->
+    console.log("Inside updateConfig")
     sessionHeroConfig = @options.session.get('heroConfig') ? {}
     lastHeroConfig = me.get('heroConfig') ? {}
     inventory = @getCurrentEquipmentConfig()
@@ -627,7 +651,7 @@ module.exports = class InventoryModal extends ModalView
     affordable = item.affordable
     if not affordable
       @playSound 'menu-button-click'
-      @askToBuyGems button unless me.freeOnly() or application.getHocCampaign()
+      @askToBuyGemsOrSubscribe button unless me.freeOnly() or application.getHocCampaign()
     else if button.hasClass('confirm')
       @playSound 'menu-button-unlock-end'
       purchase = Purchase.makeFor(item)
@@ -640,7 +664,6 @@ module.exports = class InventoryModal extends ModalView
 
       me.set('purchased', purchased)
       me.set('spent', (me.get('spent') ? 0) + item.get('gems'))
-
       #- ...then rerender key bits
       @itemGroups.lockedItems.remove(item)
       @itemGroups.requiredPurchaseItems.remove(item)
@@ -654,8 +677,8 @@ module.exports = class InventoryModal extends ModalView
       @setUpDraggableEventsForAvailableEquipment()
       @itemDetailsView.setItem(item)
       @onScrollUnequipped true
-
-      Backbone.Mediator.publish 'store:item-purchased', item: item, itemSlug: item.get('slug')
+      if not me.isStudent()
+        Backbone.Mediator.publish 'store:item-purchased', item: item, itemSlug: item.get('slug')
     else
       @playSound 'menu-button-unlock-start'
       button.addClass('confirm').text($.i18n.t('play.confirm'))
@@ -666,12 +689,18 @@ module.exports = class InventoryModal extends ModalView
     createAccountModal = new CreateAccountModal supermodel: @supermodel
     return @openModalView createAccountModal
 
-  askToBuyGems: (unlockButton) ->
+  askToBuyGemsOrSubscribe: (unlockButton) ->
     @$el.find('.unlock-button').popover 'destroy'
     if me.isStudent()
       popoverTemplate = earnGemsPromptTemplate {}
-    else
+    else if me.canBuyGems()
       popoverTemplate = buyGemsPromptTemplate {}
+    else
+      if not me.hasSubscription() # user does not have subscription ask him to subscribe to get more gems, china infra does not have 'buy gems' option
+        popoverTemplate = subscribeForGemsPrompt {}
+      else # user has subscription and yet not enough gems, just ask him to keep playing for more gems
+        popoverTemplate = earnGemsPromptTemplate {}
+
     unlockButton.popover(
       animation: true
       trigger: 'manual'
@@ -689,10 +718,16 @@ module.exports = class InventoryModal extends ModalView
     return @askToSignUp() if me.get('anonymous')
     @openModalView new BuyGemsModal()
 
+  onSubscribeButtonClicked: (e) ->
+    @openModalView new SubscribeModal()
+    window.tracker?.trackEvent 'Show subscription modal', category: 'Subscription', label: 'hero subscribe modal: ' + ($(e.target).data('heroSlug') or 'unknown')
+
   onClickedSomewhere: (e) ->
+    @closePopover()
+
+  closePopover: ->
     return if @destroyed
     @$el.find('.unlock-button').popover 'destroy'
-
 
   #- Dynamic portrait loading
 

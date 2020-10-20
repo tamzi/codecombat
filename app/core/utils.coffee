@@ -1,3 +1,81 @@
+slugify = _.str?.slugify ? _.string?.slugify # TODO: why _.string on client and _.str on server?
+
+translatejs2cpp = (jsCode, fullCode=true) ->
+  matchBrackets = (str, startIndex) ->
+    cc = 0
+    for i in [startIndex..str.length-1] by 1
+      cc += 1 if str[i] == '{'
+      if str[i] == '}'
+        cc -= 1
+        return i+2 unless cc
+  splitFunctions = (str) ->
+    creg = new RegExp '\n[ \t]*[^/]'
+    codeIndex = creg.exec(str)
+    if str and str[0] != '/'
+      startComments = ''
+    else if codeIndex
+      codeIndex = codeIndex.index + 1
+      startComments = str.slice 0, codeIndex
+      str = str.slice codeIndex
+    else
+      return [str, '']
+
+    indices = []
+    reg = new RegExp '\nfunction ', 'gi'
+    indices.push 0 if str.startsWith("function ")
+    while (result = reg.exec(str))
+      indices.push result.index+1
+    split = []
+    end = 0
+    split.push {s: 0, e: indices[0]} if indices.length
+    for i in indices
+      end = matchBrackets str, i
+      split.push {s: i, e: end}
+    split.push {s: end, e: str.length}
+    header = if startComments then [startComments] else []
+    return header.concat split.map (s) -> str.slice s.s, s.e
+
+  jsCodes = splitFunctions jsCode
+  len = jsCodes.length
+  lines = jsCodes[len-1].split '\n'
+  if fullCode
+    jsCodes[len-1] = """
+      int main() {
+      #{(lines.map (line) -> '    ' + line).join '\n'}
+      return 0;
+      }
+    """
+  else
+    jsCodes[len-1] = (lines.map (line) -> ' ' + line).join('\n')
+  for i in [0..len-1] by 1
+    if /^ *function/.test(jsCodes[i])
+      variables = jsCodes[i].match(/function.*\((.*)\)/)[1]
+      v = ''
+      v = variables.split(', ').map((e) -> 'auto ' + e).join(', ') if variables
+      jsCodes[i] = jsCodes[i].replace(/function(.*)\((.*)\)/, 'auto$1(' + v + ')')
+    jsCodes[i] = jsCodes[i].replace new RegExp('var x', 'g'), 'float x'
+    jsCodes[i] = jsCodes[i].replace new RegExp('var y', 'g'), 'float y'
+    jsCodes[i] = jsCodes[i].replace new RegExp('var dist', 'g'), 'float dist'
+    jsCodes[i] = jsCodes[i].replace new RegExp('var (\\w+)Index', 'g'), 'int $1Index'
+    jsCodes[i] = jsCodes[i].replace new RegExp(' === ', 'g'), ' == '
+    jsCodes[i] = jsCodes[i].replace new RegExp(' !== ', 'g'), ' != '
+    jsCodes[i] = jsCodes[i].replace new RegExp(' var ', 'g'), ' auto '
+    jsCodes[i] = jsCodes[i].replace new RegExp(' = \\[(.*)\\]', 'g'), ' = {$1}'
+    # Don't substitute these within comments
+    noComment = '^ *([^/\\r\\n]*?)'
+    jsCodes[i] = jsCodes[i].replace new RegExp(noComment + "'(.*?)'", 'gm'), '$1"$2"'
+  unless fullCode
+    lines = jsCodes[len-1].split '\n'
+    jsCodes[len-1] = (lines.map (line) -> line.slice 1).join('\n')
+
+  cppCodes = jsCodes.join('').split('\n')
+  for i in [1..cppCodes.length-1] by 1
+    if cppCodes[i].match(/^\s*else/) and cppCodes[i-1].match("//")
+      tmp = cppCodes[i]
+      cppCodes[i] = cppCodes[i-1]
+      cppCodes[i-1] = tmp
+  cppCodes.join '\n'
+
 clone = (obj) ->
   return obj if obj is null or typeof (obj) isnt 'object'
   temp = obj.constructor()
@@ -19,73 +97,92 @@ combineAncestralObject = (obj, propertyName) ->
   combined
 
 countries = [
-  {country: 'united-states', countryCode: 'US'}
-  {country: 'china', countryCode: 'CN'}
+  {country: 'united-states', countryCode: 'US', ageOfConsent: 13, addressesIncludeAdministrativeRegion:true}
+  {country: 'china', countryCode: 'CN', addressesIncludeAdministrativeRegion:true}
   {country: 'brazil', countryCode: 'BR'}
 
   # Loosely ordered by decreasing traffic as measured 2016-09-01 - 2016-11-07
-  {country: 'united-kingdom', countryCode: 'GB'}
+  # TODO: switch to alphabetical ordering
+  {country: 'united-kingdom', countryCode: 'GB', inEU: true, ageOfConsent: 13}
   {country: 'russia', countryCode: 'RU'}
-  {country: 'australia', countryCode: 'AU'}
-  {country: 'canada', countryCode: 'CA'}
-  {country: 'france', countryCode: 'FR'}
+  {country: 'australia', countryCode: 'AU', addressesIncludeAdministrativeRegion:true}
+  {country: 'canada', countryCode: 'CA', addressesIncludeAdministrativeRegion:true}
+  {country: 'france', countryCode: 'FR', inEU: true, ageOfConsent: 15}
   {country: 'taiwan', countryCode: 'TW'}
   {country: 'ukraine', countryCode: 'UA'}
-  {country: 'poland', countryCode: 'PL'}
-  {country: 'spain', countryCode: 'ES'}
-  {country: 'germany', countryCode: 'DE'}
-  {country: 'netherlands', countryCode: 'NL'}
-  {country: 'hungary', countryCode: 'HU'}
+  {country: 'poland', countryCode: 'PL', inEU: true, ageOfConsent: 13}
+  {country: 'spain', countryCode: 'ES', inEU: true, ageOfConsent: 13}
+  {country: 'germany', countryCode: 'DE', inEU: true, ageOfConsent: 16}
+  {country: 'netherlands', countryCode: 'NL', inEU: true, ageOfConsent: 16}
+  {country: 'hungary', countryCode: 'HU', inEU: true, ageOfConsent: 16}
   {country: 'japan', countryCode: 'JP'}
   {country: 'turkey', countryCode: 'TR'}
   {country: 'south-africa', countryCode: 'ZA'}
   {country: 'indonesia', countryCode: 'ID'}
   {country: 'new-zealand', countryCode: 'NZ'}
-  {country: 'finland', countryCode: 'FI'}
+  {country: 'finland', countryCode: 'FI', inEU: true, ageOfConsent: 13}
   {country: 'south-korea', countryCode: 'KR'}
-  {country: 'mexico', countryCode: 'MX'}
+  {country: 'mexico', countryCode: 'MX', addressesIncludeAdministrativeRegion:true}
   {country: 'vietnam', countryCode: 'VN'}
   {country: 'singapore', countryCode: 'SG'}
   {country: 'colombia', countryCode: 'CO'}
-  {country: 'india', countryCode: 'IN'}
+  {country: 'india', countryCode: 'IN', addressesIncludeAdministrativeRegion:true}
   {country: 'thailand', countryCode: 'TH'}
-  {country: 'belgium', countryCode: 'BE'}
-  {country: 'sweden', countryCode: 'SE'}
-  {country: 'denmark', countryCode: 'DK'}
-  {country: 'czech-republic', countryCode: 'CZ'}
+  {country: 'belgium', countryCode: 'BE', inEU: true, ageOfConsent: 13}
+  {country: 'sweden', countryCode: 'SE', inEU: true, ageOfConsent: 13}
+  {country: 'denmark', countryCode: 'DK', inEU: true, ageOfConsent: 13}
+  {country: 'czech-republic', countryCode: 'CZ', inEU: true, ageOfConsent: 15}
   {country: 'hong-kong', countryCode: 'HK'}
-  {country: 'italy', countryCode: 'IT'}
-  {country: 'romania', countryCode: 'RO'}
+  {country: 'italy', countryCode: 'IT', inEU: true, ageOfConsent: 16, addressesIncludeAdministrativeRegion:true}
+  {country: 'romania', countryCode: 'RO', inEU: true, ageOfConsent: 16}
   {country: 'belarus', countryCode: 'BY'}
-  {country: 'norway', countryCode: 'NO'}
+  {country: 'norway', countryCode: 'NO', inEU: true, ageOfConsent: 13}  # GDPR applies to EFTA
   {country: 'philippines', countryCode: 'PH'}
-  {country: 'lithuania', countryCode: 'LT'}
+  {country: 'lithuania', countryCode: 'LT', inEU: true, ageOfConsent: 16}
   {country: 'argentina', countryCode: 'AR'}
-  {country: 'malaysia', countryCode: 'MY'}
+  {country: 'malaysia', countryCode: 'MY', addressesIncludeAdministrativeRegion:true}
   {country: 'pakistan', countryCode: 'PK'}
   {country: 'serbia', countryCode: 'RS'}
-  {country: 'greece', countryCode: 'GR'}
-  {country: 'israel', countryCode: 'IL'}
-  {country: 'portugal', countryCode: 'PT'}
-  {country: 'slovakia', countryCode: 'SK'}
-  {country: 'ireland', countryCode: 'IE'}
-  {country: 'switzerland', countryCode: 'CH'}
+  {country: 'greece', countryCode: 'GR', inEU: true, ageOfConsent: 15}
+  {country: 'israel', countryCode: 'IL', inEU: true}
+  {country: 'portugal', countryCode: 'PT', inEU: true, ageOfConsent: 13}
+  {country: 'slovakia', countryCode: 'SK', inEU: true, ageOfConsent: 16}
+  {country: 'ireland', countryCode: 'IE', inEU: true, ageOfConsent: 16}
+  {country: 'switzerland', countryCode: 'CH', inEU: true, ageOfConsent: 16}  # GDPR applies to EFTA
   {country: 'peru', countryCode: 'PE'}
-  {country: 'bulgaria', countryCode: 'BG'}
+  {country: 'bulgaria', countryCode: 'BG', inEU: true, ageOfConsent: 14}
   {country: 'venezuela', countryCode: 'VE'}
-  {country: 'austria', countryCode: 'AT'}
-  {country: 'croatia', countryCode: 'HR'}
+  {country: 'austria', countryCode: 'AT', inEU: true, ageOfConsent: 14}
+  {country: 'croatia', countryCode: 'HR', inEU: true, ageOfConsent: 16}
   {country: 'saudia-arabia', countryCode: 'SA'}
   {country: 'chile', countryCode: 'CL'}
   {country: 'united-arab-emirates', countryCode: 'AE'}
   {country: 'kazakhstan', countryCode: 'KZ'}
-  {country: 'estonia', countryCode: 'EE'}
+  {country: 'estonia', countryCode: 'EE', inEU: true, ageOfConsent: 13}
   {country: 'iran', countryCode: 'IR'}
   {country: 'egypt', countryCode: 'EG'}
   {country: 'ecuador', countryCode: 'EC'}
-  {country: 'slovenia', countryCode: 'SI'}
+  {country: 'slovenia', countryCode: 'SI', inEU: true, ageOfConsent: 15}
   {country: 'macedonia', countryCode: 'MK'}
+  {country: 'cyprus', countryCode: 'CY', inEU: true, ageOfConsent: 14}
+  {country: 'latvia', countryCode: 'LV', inEU: true, ageOfConsent: 13}
+  {country: 'luxembourg', countryCode: 'LU', inEU: true, ageOfConsent: 16}
+  {country: 'malta', countryCode: 'MT', inEU: true, ageOfConsent: 16}
+  {country: 'lichtenstein', countryCode: 'LI', inEU: true}  # GDPR applies to EFTA
+  {country: 'iceland', countryCode: 'IS', inEU: true}  # GDPR applies to EFTA
 ]
+
+inEU = (country) -> !!_.find(countries, (c) => c.country is slugify(country))?.inEU
+
+addressesIncludeAdministrativeRegion = (country) -> !!_.find(countries, (c) => c.country is slugify(country))?.addressesIncludeAdministrativeRegion
+
+ageOfConsent = (countryName, defaultIfUnknown=0) ->
+  return defaultIfUnknown unless countryName
+  country = _.find(countries, (c) => c.country is slugify(countryName))
+  return defaultIfUnknown unless country
+  return country.ageOfConsent if country.ageOfConsent
+  return 16 if country.inEU
+  return defaultIfUnknown
 
 courseIDs =
   INTRODUCTION_TO_COMPUTER_SCIENCE: '560f1a9f22961295f9427742'
@@ -99,6 +196,9 @@ courseIDs =
   COMPUTER_SCIENCE_4: '56462f935afde0c6fd30fc8d'
   COMPUTER_SCIENCE_5: '569ed916efa72b0ced971447'
   COMPUTER_SCIENCE_6: '5817d673e85d1220db624ca4'
+
+# TODO add when final courses content created for ozaria
+ozariaCourseIDs = []
 
 orderedCourseIDs = [
   courseIDs.INTRODUCTION_TO_COMPUTER_SCIENCE
@@ -196,6 +296,11 @@ stripIndentation = (code) ->
   strippedCode = (line.substr(indentation) for line in codeLines).join('\n')
   return strippedCode
 
+# @param {Object} say - the object containing an i18n property.
+# @param {string} target - the attribute that you want to access.
+# @returns {string} translated string if possible
+# Example usage:
+#   `courseName = utils.i18n(course.attributes, 'name')`
 i18n = (say, target, language=me.get('preferredLanguage', true), fallback='en') ->
   generalResult = null
   fallBackResult = null
@@ -232,6 +337,8 @@ getByPath = (target, path) ->
   obj
 
 isID = (id) -> _.isString(id) and id.length is 24 and id.match(/[a-f0-9]/gi)?.length is 24
+
+isIE = -> $?.browser?.msie ? false
 
 isRegionalSubscription = (name) -> /_basic_subscription/.test(name)
 
@@ -428,8 +535,9 @@ startsWithVowel = (s) -> s[0] in 'aeiouAEIOU'
 filterMarkdownCodeLanguages = (text, language) ->
   return '' unless text
   currentLanguage = language or me.get('aceConfig')?.language or 'python'
-  excludedLanguages = _.without ['javascript', 'python', 'coffeescript', 'clojure', 'lua', 'java', 'io', 'html'], currentLanguage
-  # Exclude language-specific code blocks like ```python (... code ...)``` for each non-target language.
+  excludedLanguages = _.without ['javascript', 'python', 'coffeescript', 'lua', 'java', 'cpp', 'html'], if currentLanguage == 'cpp' then 'javascript' else currentLanguage
+  # Exclude language-specific code blocks like ```python (... code ...)``
+  # ` for each non-target language.
   codeBlockExclusionRegex = new RegExp "```(#{excludedLanguages.join('|')})\n[^`]+```\n?", 'gm'
   # Exclude language-specific images like ![python - image description](image url) for each non-target language.
   imageExclusionRegex = new RegExp "!\\[(#{excludedLanguages.join('|')}) - .+?\\]\\(.+?\\)\n?", 'gm'
@@ -455,6 +563,12 @@ filterMarkdownCodeLanguages = (text, language) ->
       text = text.replace ///(\ a|A)n(\ `#{to}`)///g, "$1$2"
     if not startsWithVowel(from) and startsWithVowel(to)
       text = text.replace ///(\ a|A)(\ `#{to}`)///g, "$1n$2"
+  if currentLanguage == 'cpp'
+    jsRegex = new RegExp "```javascript\n([^`]+)```", 'gm'
+    text = text.replace jsRegex, (a, l) =>
+      """```cpp
+        #{@translatejs2cpp a[13..a.length-4], false}
+      ```"""
 
   return text
 
@@ -463,6 +577,7 @@ capitalLanguages =
   'coffeescript': 'CoffeeScript'
   'python': 'Python'
   'java': 'Java'
+  'cpp': 'C++'
   'lua': 'Lua'
   'html': 'HTML'
 
@@ -479,24 +594,29 @@ createLevelNumberMap = (levels) ->
     else if level.assessment
       practiceLevelTotalCount++
       practiceLevelCurrentCount++
-      levelNumber = 'Challenge'
+      levelNumber = if level.assessment is 'cumulative' then $.t('play_level.combo_challenge') else $.t('play_level.concept_challenge')
     else
       practiceLevelCurrentCount = 0
     levelNumberMap[level.key] = levelNumber
   levelNumberMap
 
 findNextLevel = (levels, currentIndex, needsPractice) ->
-  # TODO: Fully account for skipping assessments
-  # levels = [{practice: true/false, complete: true/false}]
+  # Find next available incomplete level, depending on whether practice is needed
+  # levels = [{practice: true/false, complete: true/false, assessment: true/false, locked: true/false}]
+  # Skip over assessment levels
+  # return -1 if at or beyond locked level
+  return -1 for i in [0..currentIndex] when levels[i].locked
   index = currentIndex
   index++
   if needsPractice
     if levels[currentIndex].practice or index < levels.length and levels[index].practice
       # Needs practice, current level is practice or next is practice; return the next incomplete practice-or-normal level
       # May leave earlier practice levels incomplete and reach end of course
-      index++ while index < levels.length and (levels[index].complete or levels[index].assessment)
+      while index < levels.length and (levels[index].complete or levels[index].assessment)
+        return -1 if levels[index].locked
+        index++ 
     else
-      # Needs practice, current level is required, next level is required; return the first incomplete level of previous practice chain
+      # Needs practice, current level is required, next level is required or assessment; return the first incomplete level of previous practice chain
       index--
       index-- while index >= 0 and not levels[index].practice
       if index >= 0
@@ -508,27 +628,38 @@ findNextLevel = (levels, currentIndex, needsPractice) ->
             return index
       # Last set of practice levels is complete; return the next incomplete normal level instead.
       index = currentIndex + 1
-      index++ while index < levels.length and levels[index].complete and not levels[index].assessment
+      while index < levels.length and (levels[index].complete or levels[index].assessment)
+        return -1 if levels[index].locked
+        index++ 
   else
     # No practice needed; return the next required incomplete level
-    index++ while index < levels.length and (levels[index].practice or levels[index].complete or levels[index].assessment)
+    while index < levels.length and (levels[index].practice or levels[index].complete or levels[index].assessment)
+      return -1 if levels[index].locked
+      index++
   index
 
-findNextAssessmentForLevel = (levels, currentIndex) ->
-  # Assessments are placed immediately after a level (and possibly its practice levels)
-  # eg: l*,p,p,a*,a',l,... (if we ever do multiple assessments later)
+findNextAssessmentForLevel = (levels, currentIndex, needsPractice) ->
+  # Find assessment level immediately after current level (and its practice levels)
+  # Only return assessment if it's the next level
+  # Skip over practice levels unless practice neeeded
+  # levels = [{practice: true/false, complete: true/false, assessment: true/false, locked: true/false}]
+  # eg: l*,p,p,a*,a',l,...
   # given index l*, return index a*
   # given index a*, return index a'
   index = currentIndex
   index++
   while index < levels.length
-    if levels[index].complete or levels[index].practice # It's a practice level or completed, keep looking
-      index++
+    if levels[index].practice
+      return -1 if needsPractice and not levels[index].complete
+      index++ # It's a practice level but do not need practice, keep looking
     else if levels[index].assessment
+      return -1 if levels[index].complete
       return index
+    else if levels[index].complete # It's completed, keep looking
+      index++
     else # we got to a normal level; we didn't find an assessment for the given level.
-      return false
-  return false # we got to the end of the list and found nothing
+      return -1
+  return -1 # we got to the end of the list and found nothing
 
 needsPractice = (playtime=0, threshold=5) ->
   playtime / 60 > threshold
@@ -537,6 +668,14 @@ sortCourses = (courses) ->
   _.sortBy courses, (course) ->
     # ._id can be from classroom.courses, otherwise it's probably .id
     index = orderedCourseIDs.indexOf(course.id ? course._id)
+    index = 9001 if index is -1
+    index
+
+sortCoursesByAcronyms = (courses) ->
+  orderedCourseAcronyms = _.sortBy(courseAcronyms)
+  _.sortBy courses, (course) ->
+    # ._id can be from classroom.courses, otherwise it's probably .id
+    index = orderedCourseAcronyms.indexOf(courseAcronyms[course.id ? course._id])
     index = 9001 if index is -1
     index
 
@@ -644,7 +783,55 @@ emailRegex = /[A-z0-9._%+-]+@[A-z0-9.-]+\.[A-z]{2,63}/
 isValidEmail = (email) ->
   emailRegex.test(email?.trim().toLowerCase())
 
+formatStudentLicenseStatusDate = (status, date) ->
+    string = switch status
+      when 'not-enrolled' then $.i18n.t('teacher.status_not_enrolled')
+      when 'enrolled' then (if date then $.i18n.t('teacher.status_enrolled') else '-')
+      when 'expired' then $.i18n.t('teacher.status_expired')
+    string.replace('{{date}}', date or 'Never')
+
+getApiClientIdFromEmail = (email) ->
+  if /@codeninjas.com$/i.test(email) # hard coded for code ninjas since a lot of their users do not have clientCreator set
+    clientID = '57fff652b0783842003fed00'
+    return clientID
+
+# hard-coded 3 CS1 levels with concept video details
+# TODO: move them to database if more such levels
+videoLevels = {
+  # gems in the deep
+  "54173c90844506ae0195a0b4": {
+    i18name: 'basic_syntax',
+    url: "https://player.vimeo.com/video/310626758",
+    cn_url: "https://assets.koudashijie.com/videos/%E5%AF%BC%E8%AF%BE01-%E5%9F%BA%E6%9C%AC%E8%AF%AD%E6%B3%95-Codecombat%20Instruction%20for%20Teachers.mp4",
+    title: "Basic Syntax",
+    original: "54173c90844506ae0195a0b4",
+    thumbnail_locked: "/images/level/videos/basic_syntax_locked.png",
+    thumbnail_unlocked: "/images/level/videos/basic_syntax_unlocked.png"
+  },
+  # fire dancing
+  "55ca293b9bc1892c835b0136": {
+    i18name: 'while_loops',
+    url: "https://player.vimeo.com/video/310626741",
+    cn_url: "https://assets.koudashijie.com/videos/%E5%AF%BC%E8%AF%BE03-CodeCombat%E6%95%99%E5%AD%A6%E5%AF%BC%E8%AF%BE-CS1-%E5%BE%AA%E7%8E%AFlogo.mp4",
+    title: "While Loops",
+    original: "55ca293b9bc1892c835b0136"
+    thumbnail_locked: "/images/level/videos/while_loops_locked.png",
+    thumbnail_unlocked: "/images/level/videos/while_loops_unlocked.png"
+  }
+  # known enemy
+  "5452adea57e83800009730ee": {
+    i18name: 'variables',
+    url: "https://player.vimeo.com/video/310626807",
+    cn_url: "https://assets.koudashijie.com/videos/%E5%AF%BC%E8%AF%BE02-%E5%8F%98%E9%87%8F-CodeCombat-CS1-%E5%8F%98%E9%87%8Flogo.mp4",
+    title: "Variables",
+    original: "5452adea57e83800009730ee"
+    thumbnail_locked: "/images/level/videos/variables_locked.png",
+    thumbnail_unlocked: "/images/level/videos/variables_unlocked.png"
+  }
+}
+
 module.exports = {
+  ageOfConsent
   capitalLanguages
   clone
   combineAncestralObject
@@ -657,7 +844,9 @@ module.exports = {
   findNextLevel
   findNextAssessmentForLevel
   formatDollarValue
+  formatStudentLicenseStatusDate
   functionCreators
+  getApiClientIdFromEmail
   getByPath
   getCourseBundlePrice
   getCoursePraise
@@ -672,7 +861,9 @@ module.exports = {
   hslToHex
   i18n
   injectCSS
+  inEU
   isID
+  isIE
   isRegionalSubscription
   isSmokeTestEmail
   keepDoingUntil
@@ -685,10 +876,15 @@ module.exports = {
   replaceText
   round
   sortCourses
+  sortCoursesByAcronyms
   stripIndentation
   usStateCodes
   userAgent
   petThangIDs
   premiumContent
   isValidEmail
+  videoLevels
+  ozariaCourseIDs
+  addressesIncludeAdministrativeRegion
+  translatejs2cpp
 }

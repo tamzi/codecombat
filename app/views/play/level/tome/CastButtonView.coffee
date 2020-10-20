@@ -34,7 +34,7 @@ module.exports = class CastButtonView extends CocoView
     # WARNING: CourseVictoryModal does not handle mirror sessions when submitting to ladder; adjust logic if a
     # mirror level is added to
     # Keep server/middleware/levels.coffee mirror list in sync with this one
-    @loadMirrorSession() if @options.level.get('slug') in ['ace-of-coders', 'elemental-wars', 'the-battle-of-sky-span', 'tesla-tesoro', 'escort-duty']
+    @loadMirrorSession() if @options.level.get('mirrorMatch')
     @mirror = @mirrorSession?
     @autoSubmitsToLadder = @options.level.isType('course-ladder')
     # Show publish CourseVictoryModal if they've already published
@@ -125,7 +125,9 @@ module.exports = class CastButtonView extends CocoView
     @winnable = winnable
     @$el.toggleClass 'winnable', @winnable
     Backbone.Mediator.publish 'tome:winnability-updated', winnable: @winnable, level: @options.level
-    if @options.level.get('hidesRealTimePlayback') or @options.level.isType('web-dev', 'game-dev')
+    if @options.level.get('slug') in ['resource-tycoon']
+      null  # No "Done" button for standalone tournament game-dev project levels outside of a campaign
+    else if @options.level.get('hidesRealTimePlayback') or @options.level.isType('web-dev', 'game-dev')
       @$el.find('.done-button').toggle @winnable
     else if @winnable and @options.level.get('slug') in ['course-thornbush-farm', 'thornbush-farm']
       @$el.find('.submit-button').show()  # Hide submit until first win so that script can explain it.

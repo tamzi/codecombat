@@ -95,11 +95,14 @@ module.exports = Surface = class Surface extends CocoClass
     @options = _.clone(@defaults)
     @options = _.extend(@options, givenOptions) if givenOptions
     @handleEvents = @options.handleEvents ? true
+    @zoomToHero = @options.levelType isnt "game-dev" # In game-dev levels the hero is gameReferee
     @gameUIState = @options.gameUIState or new GameUIState({
       canDragCamera: true
     })
     @realTimeInputEvents = @gameUIState.get('realTimeInputEvents')
     @listenTo(@gameUIState, 'sprite:mouse-down', @onSpriteMouseDown)
+    if @world.trackMouseMove # This is defined as a parameter of Systems.UI and setup there for a level
+      @listenTo(@gameUIState, 'surface:stage-mouse-move', @onWorldMouseMove)
     @onResize = _.debounce @onResize, resizeDelay
     @initEasel()
     @initAudio()
@@ -112,6 +115,7 @@ module.exports = Surface = class Surface extends CocoClass
     @webGLStage = new createjs.StageGL(@webGLCanvas[0])
     @normalStage.nextStage = @webGLStage
     @camera = new Camera(@webGLCanvas, { @gameUIState, @handleEvents })
+    @camera.dragDisabled = @world.cameraDragDisabled # This is defined as a parameter of Systems.UI and setup there for a level
     AudioPlayer.camera = @camera unless @options.choosing
 
     @normalLayers.push @surfaceTextLayer = new Layer name: 'Surface Text', layerPriority: 1, transform: Layer.TRANSFORM_SURFACE_TEXT, camera: @camera
@@ -156,8 +160,8 @@ module.exports = Surface = class Surface extends CocoClass
   initCoordinates: ->
     @coordinateGrid ?= new CoordinateGrid {camera: @camera, layer: @gridLayer, textLayer: @surfaceTextLayer}, @world.size()
     @coordinateGrid.showGrid() if @world.showGrid or @options.grid
-    showCoordinates = if @options.coords? then @options.coords else @world.showCoordinates
-    @coordinateDisplay ?= new CoordinateDisplay camera: @camera, layer: @surfaceTextLayer if showCoordinates
+    @showCoordinates = if @options.coords? then @options.coords else @world.showCoordinates
+    @coordinateDisplay ?= new CoordinateDisplay camera: @camera, layer: @surfaceTextLayer if @showCoordinates
 
   hookUpChooseControls: ->
     chooserOptions = stage: @webGLStage, surfaceLayer: @surfaceTextLayer, camera: @camera, restrictRatio: @options.choosing is 'ratio-region'
@@ -254,7 +258,7 @@ module.exports = Surface = class Surface extends CocoClass
   updateState: (frameChanged) ->
     # world state must have been restored in @restoreWorldState
     if @handleEvents
-      if @playing and @currentFrame < @world.frames.length - 1 and @heroLank and not @mouseIsDown and @camera.newTarget isnt @heroLank.sprite and @camera.target isnt @heroLank.sprite
+      if @zoomToHero and @playing and @currentFrame < @world.frames.length - 1 and @heroLank and not @mouseIsDown and @camera.newTarget isnt @heroLank.sprite and @camera.target isnt @heroLank.sprite
         @camera.zoomTo @heroLank.sprite, @camera.zoom, 750
     @lankBoss.update frameChanged
     @camera.updateZoom()  # Make sure to do this right after the LankBoss updates, not before, so it can properly target sprite positions.
@@ -551,6 +555,14 @@ module.exports = Surface = class Surface extends CocoClass
       thangID: e.sprite.thang.id
     })
 
+  onWorldMouseMove: (e) =>
+    return unless @realTime
+    @realTimeInputEvents.add({
+      type: 'mousemove'
+      pos: @camera.screenToWorld x: e.originalEvent.stageX, y: e.originalEvent.stageY
+      time: @world.dt * @world.frames.length
+    })
+
   onMouseUp: (e) =>
     return if @disabled
     createjs.lastMouseWorldPos = @camera.screenToWorld x: e.stageX, y: e.stageY
@@ -614,23 +626,10 @@ module.exports = Surface = class Surface extends CocoClass
 
     #scaleFactor = if application.isIPadApp then 2 else 1  # Retina
     scaleFactor = 1
-    if @options.stayVisible or features.codePlay
-      availableHeight = window.innerHeight
-      availableHeight -= ($('.ad-container').outerHeight() or 0)
-      availableHeight -= ($('#game-area').outerHeight() or 0) - ($('#canvas-wrapper').outerHeight() or 0)
-      if features.codePlay
-        bannerHeight = ($('#codeplay-product-banner').height() or 0)
-        availableHeight -= bannerHeight
-        scaleFactor = availableHeight / newHeight if availableHeight < newHeight
-      scaleFactor = availableHeight / newHeight if availableHeight < newHeight
-
     newWidth *= scaleFactor
     newHeight *= scaleFactor
 
-    return @updateCodePlayMargin() if newWidth is oldWidth and newHeight is oldHeight and not @options.spectateGame
-    return @updateCodePlayMargin() if newWidth < 200 or newHeight < 200
     @normalCanvas.add(@webGLCanvas).attr width: newWidth, height: newHeight
-    @updateCodePlayMargin()
     @trigger 'resize', { width: newWidth, height: newHeight }
 
     # Cannot do this to the webGLStage because it does not use scaleX/Y.
@@ -643,13 +642,6 @@ module.exports = Surface = class Surface extends CocoClass
       # Since normalCanvas is absolutely positioned, it needs help aligning with webGLCanvas.
       offset = @webGLCanvas.offset().left - ($('#page-container').innerWidth() - $('#canvas-wrapper').innerWidth()) / 2
       @normalCanvas.css 'left', offset
-
-  updateCodePlayMargin: ->
-    return unless features.codePlay
-    availableWidth = (window.innerWidth * .57 - 200)
-    width = @normalCanvas.attr('width')
-    margin = Math.max(availableWidth - width, 0)
-    @normalCanvas.add(@webGLCanvas).css('margin-left', margin/2)
 
   #- Camera focus on hero
   focusOnHero: ->
@@ -687,18 +679,12 @@ module.exports = Surface = class Surface extends CocoClass
     return if @cinematic
     @cinematic = true
     @onResize()
-    if @heroLank and @options.levelType not in ['hero-ladder', 'course-ladder']
-      @previousCameraZoom = @camera.zoom
-      @camera.zoomTo @heroLank.sprite, Math.min(@camera.zoom * 2, 3), 3000
 
   onCinematicPlaybackEnded: (e) ->
     return unless @cinematic
     @cinematic = false
     @onResize()
     _.delay @onResize, resizeDelay + 100  # Do it again just to be double sure that we don't stay zoomed in due to timing problems.
-    if @handleEvents
-      if @previousCameraZoom and @options.levelType not in ['hero-ladder', 'course-ladder']
-        @camera.zoomTo @camera.newTarget or @camera.target, @previousCameraZoom, 3000
 
   onFlagColorSelected: (e) ->
     @normalCanvas.add(@webGLCanvas).toggleClass 'flag-color-selected', Boolean(e.color)

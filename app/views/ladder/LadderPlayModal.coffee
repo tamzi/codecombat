@@ -36,7 +36,9 @@ module.exports = class LadderPlayModal extends ModalView
       {id: 'javascript', name: 'JavaScript'}
       {id: 'coffeescript', name: 'CoffeeScript (Experimental)'}
       {id: 'lua', name: 'Lua'}
-      {id: 'java', name: 'Java'}
+      # TODO: Bring java back once it's supported
+      # {id: 'java', name: 'Java'}
+      # {id: 'cpp', name: 'C++'}
     ]
     @myName = me.get('name') || 'Newcomer'
 

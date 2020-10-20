@@ -4,7 +4,7 @@ GitHubHandler = require 'core/social-handlers/GitHubHandler'
 locale = require 'locale/locale'
 {me} = require 'core/auth'
 storage = require 'core/storage'
-Tracker = require 'core/Tracker'
+Tracker = require('core/Tracker2').default
 CocoModel = require 'models/CocoModel'
 api = require 'core/api'
 
@@ -47,54 +47,56 @@ console.debug ?= console.log  # Needed for IE10 and earlier
 
 Application = {
   initialize: ->
-#    if features.codePlay and me.isAnonymous()
-#      document.location.href = '//lenovogamestate.com/login/'
-    
     Router = require('core/Router')
     @isProduction = -> document.location.href.search('https?://localhost') is -1
     Vue.config.devtools = not @isProduction()
 
     # propagate changes from global 'me' User to 'me' vuex module
     store = require('core/store')
+
+    routerSync = require('vuex-router-sync')
+    vueRouter = require('app/core/vueRouter').default()
+    routerSync.sync(store, vueRouter)
+
     me.on('change', ->
       store.commit('me/updateUser', me.changedAttributes())
     )
     store.commit('me/updateUser', me.attributes)
     store.commit('updateFeatures', features)
+    if me.showChinaRemindToast()
+      setInterval ( -> noty {
+        text: '你已经练习了一个小时了，建议休息一会儿哦'
+        layout: 'topRight'
+        type:'warning'
+        killer: false
+        timeout: 5000
+        }), 3600000  # one hour
+
+
+    @store = store
+    @api = api
 
     @isIPadApp = webkit?.messageHandlers? and navigator.userAgent?.indexOf('CodeCombat-iPad') isnt -1
     $('body').addClass 'ipad' if @isIPadApp
     $('body').addClass 'picoctf' if window.serverConfig.picoCTF
     if $.browser.msie and parseInt($.browser.version) is 10
       $("html").addClass("ie10")
-    @tracker = new Tracker()
-    @facebookHandler = new FacebookHandler()
-    @gplusHandler = new GPlusHandler()
-    @githubHandler = new GitHubHandler()
+
+    @tracker = new Tracker(store)
+    window.tracker = @tracker
     locale.load(me.get('preferredLanguage', true))
-    preferredLanguage = me.get('preferredLanguage') or 'en'
+      .then => @tracker.initialize()
+      .catch((e) => console.error('Tracker initialization failed', e))
+
+    if me.useSocialSignOn()
+      @facebookHandler = new FacebookHandler()
+      @gplusHandler = new GPlusHandler()
+      @githubHandler = new GitHubHandler()
     $(document).bind 'keydown', preventBackspace
     preload(COMMON_FILES)
-    moment.relativeTimeThreshold('ss', 1) # do not return 'a few seconds' when calling 'humanize' 
+    moment.relativeTimeThreshold('ss', 1) # do not return 'a few seconds' when calling 'humanize'
     CocoModel.pollAchievements()
     unless me.get('anonymous')
-      # TODO: Remove logging later, once this system has proved stable
-      me.on 'change:earned', (user, newEarned) ->
-        newEarned ?= {}
-        oldEarned = user.previous('earned') ? {}
-        if oldEarned.gems isnt newEarned.gems
-          console.log 'Gems changed', oldEarned.gems, '->', newEarned.gems
-        newLevels = _.difference(newEarned.levels, oldEarned.levels)
-        if newLevels.length
-          console.log 'Levels added', newLevels
-        newItems = _.difference(newEarned.items, oldEarned.items)
-        if newItems.length
-          console.log 'Items added', newItems
-        newHeroes = _.difference(newEarned.heroes, oldEarned.heroes)
-        if newHeroes.length
-          console.log 'Heroes added', newHeroes
-      me.on 'change:points', (user, newPoints) ->
-        console.log 'Points changed', user.previous('points'), '->', newPoints
       @checkForNewAchievement()
     $.i18n.init {
       lng: me.get('preferredLanguage', true)
@@ -116,30 +118,29 @@ Application = {
         onVisible: onIdleChanged false
         awayTimeout: 5 * 60 * 1000
       @idleTracker.start()
-      
+
   checkForNewAchievement: ->
     if me.get('lastAchievementChecked')
       startFrom = new Date(me.get('lastAchievementChecked'))
     else
       startFrom = me.created()
-    
+
     daysSince = moment.duration(new Date() - startFrom).asDays()
     if daysSince > 1
       me.checkForNewAchievement().then => @checkForNewAchievement()
-      
+
   featureMode: {
     useChina: -> api.admin.setFeatureMode('china').then(-> document.location.reload())
-    useCodePlay: -> api.admin.setFeatureMode('code-play').then(-> document.location.reload())
     usePicoCtf: -> api.admin.setFeatureMode('pico-ctf').then(-> document.location.reload())
     useBrainPop: -> api.admin.setFeatureMode('brain-pop').then(-> document.location.reload())
     clear: -> api.admin.clearFeatureMode().then(-> document.location.reload())
   }
-      
+
   loadedStaticPage: window.alreadyLoadedView?
-  
+
   setHocCampaign: (campaignSlug) -> storage.save('hoc-campaign', campaignSlug)
   getHocCampaign: -> storage.load('hoc-campaign')
-  
+
 }
 
 module.exports = Application

@@ -3,6 +3,9 @@
     @media print
       display: none
 
+    &[dir="rtl"]
+      float: right
+
   .print, .print p
     text-align: center
     font-size: .75em
@@ -146,7 +149,7 @@
 
 
         // Styles for Getting Started page.
-  #getting-started, #clever-faq
+  [id^=getting-started], #clever-faq
       img
         max-width: 400px
         border: 1px solid #666

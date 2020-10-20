@@ -30,10 +30,6 @@ module.exports = class ModalView extends CocoView
 
   afterRender: ->
     super()
-    if Backbone.history.fragment is "employers"
-      $(@$el).find(".background-wrapper").each ->
-        $(this).addClass("employer-modal-background-wrapper").removeClass("background-wrapper")
-
     if @modalWidthPercent
       @$el.find('.modal-dialog').css width: "#{@modalWidthPercent}%"
     @$el.on 'hide.bs.modal', =>
@@ -46,7 +42,7 @@ module.exports = class ModalView extends CocoView
     # This makes sure if you press enter right after opening the players guide,
     # it doesn't just reopen the modal.
     $(document.activeElement).blur()
-    
+
     if localStorage?.showViewNames
       title = @constructor.name
       setTimeout ->
@@ -74,5 +70,5 @@ module.exports = class ModalView extends CocoView
 
   destroy: ->
     @hide() unless @hidden
-    @$el.off 'hide.bs.modal'
+    @$el.off 'hide.bs.modal' if @$el
     super()

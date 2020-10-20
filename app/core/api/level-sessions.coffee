@@ -1,10 +1,10 @@
 fetchJson = require './fetch-json'
 
 module.exports = {
-  submitToRank: ({ session, courseInstanceID }, options) ->
+  submitToRank: ({ session, courseInstanceId }, options) ->
     fetchJson('/queue/scoring', _.merge({}, options, {
       method: 'POST'
-      json: { session, courseInstanceID }
+      json: { session, courseInstanceId }
     }))
 
   getByStudentsAndLevels: ({ earliestCreated, studentIds, levelOriginals, project }, options) ->
@@ -26,4 +26,15 @@ module.exports = {
       json: value
     }))
 
+  fetchForClassroomMembers: (classroomID, options) ->
+    fetchJson("/db/classroom/#{classroomID}/member-sessions", _.merge({}, options, {
+      method: 'GET'
+      remove: false
+    }))
+
+  update: (levelSession, options={}) ->
+    fetchJson("/db/level.session/#{levelSession._id}", _.assign({}, options, {
+      method: 'PUT'
+      json: levelSession
+    }))
 }

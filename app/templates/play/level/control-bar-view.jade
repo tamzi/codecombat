@@ -1,4 +1,7 @@
-- var includeHomeLink = application.getHocCampaign() || !((me.isStudent() || me.isTeacher()) && !view.course);
+- var includeHomeLink = application.getHocCampaign() || !((me.isStudent() || me.isTeacher()) && !view.course) || view.level.isType('course-ladder');
+// No "Done" button for standalone tournament game-dev project levels outside of a campaign
+- if (['resource-tycoon'].indexOf(view.level.get('slug')) != -1)
+-   includeHomeLink = false;
 if includeHomeLink
   .left-cap
 .right-cap
@@ -17,12 +20,15 @@ if includeHomeLink
     if view.course
       .level-label= i18n(view.course.attributes, 'name')
     .level-name(title=difficultyTitle || "")
-      - var levelNumberLabel = ''
-      if view.level && view.level.get('assessment')
-        - levelNumberLabel = $.i18n.t('courses.challenge') + ' '
-      else if view.levelNumber
-        - levelNumberLabel = view.levelNumber + '. '
-      span(dir="auto") #{levelNumberLabel}#{worldName.replace('Course: ', '')}
+      if view.levelName
+        span(dir="auto")= view.levelName
+      else
+        - var levelNumberLabel = ''
+        if view.level && view.level.get('assessment')
+          - levelNumberLabel = $.i18n.t('courses.challenge') + ' '
+        else if view.levelNumber
+          - levelNumberLabel = view.levelNumber + '. '
+        span(dir="auto") #{levelNumberLabel}#{worldName.replace('Course: ', '')}
       if levelDifficulty
         sup.level-difficulty= levelDifficulty
 

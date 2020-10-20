@@ -113,8 +113,8 @@ module.exports = class AccountSettingsView extends CocoView
             $('.nano').nanoScroller({scrollTo: @$el.find('.has-error')})
       setTimeout callback, 100
     else
-      message = $.i18n.t('account_settings.wrong_email', defaultValue: 'Wrong Email.')
-      err = [message: message, property: 'email', formatted: true]
+      message = $.i18n.t('account_settings.wrong_email', defaultValue: 'Wrong Email or Username.')
+      err = [message: message, property: 'emailOrUsername', formatted: true]
       forms.applyErrorsToForm($form, err)
       $('.nano').nanoScroller({scrollTo: @$el.find('.has-error')})
 
@@ -131,7 +131,7 @@ module.exports = class AccountSettingsView extends CocoView
           window?.webkit?.messageHandlers?.notification?.postMessage(name: "signOut") if window.application.isIPadApp
           Backbone.Mediator.publish("auth:logging-out", {})
           window.tracker?.trackEvent 'Log Out', category:'Homepage' if @id is 'home-view'
-          logoutUser($('#login-email').val())
+          logoutUser()
         , 500
       error: (jqXHR, status, error) ->
         console.error jqXHR

@@ -3,45 +3,57 @@ RootView = require 'views/core/RootView'
 api = require 'core/api'
 ace = require('lib/aceContainer')
 aceUtils = require 'core/aceUtils'
+APCSPLanding = require('./APCSPLanding').default
 
 module.exports = class DynamicAPCSPView extends RootView
   id: 'dynamic-apcsp-view'
   template: require 'templates/teachers/dynamic-apcsp-view'
 
-  getTitle: -> 'AP CS Principles'
+  getMeta: ->
+    title: $.i18n.t 'apcsp.title'
+    meta: [
+      { vmid: 'meta-description', name: 'description', content: $.i18n.t 'apcsp.meta_description' }
+    ]
 
   initialize: (options, @name) ->
     super(options)
     @name ?= 'index'
     @content = ''
     @loadingData = true
-    
-    if _.string.startsWith(@name, 'markdown/')
-      unless _.string.endsWith(@name, '.md')
-        @name = @name + '.md'
-      promise = api.markdown.getMarkdownFile(@name.replace('markdown/', ''))
-    else
-      promise = api.apcsp.getAPCSPFile(@name)
-    
-    promise.then((data) =>
-      @content = marked(data, sanitize: false)
-      @loadingData = false
-      @render()
-    ).catch((error) =>
-      @loadingData = false
-      if error.code is 404
-        @notFound = true
-        @render()
+    me.getClientCreatorPermissions()?.then(() => @render?())
+    unless @cannotAccess()
+      if _.string.startsWith(@name, 'markdown/')
+        unless _.string.endsWith(@name, '.md')
+          @name = @name + '.md'
+        promise = api.markdown.getMarkdownFile(@name.replace('markdown/', ''))
       else
-        console.error(error)
-        @error = error.message
-        @render()
-      
-    )
+        promise = api.apcsp.getAPCSPFile(@name)
 
+      promise.then((data) =>
+        @content = marked(data, sanitize: false)
+        @loadingData = false
+        @render()
+      ).catch((error) =>
+        @loadingData = false
+        if error.code is 404
+          @notFound = true
+          @render()
+        else
+          console.error(error)
+          @error = error.message
+          @render()
+      )
+
+  cannotAccess: ->
+    return me.isAnonymous() or !me.isTeacher() or !me.get('verifiedTeacher')
 
   afterRender: ->
     super()
+    if @cannotAccess()
+      new APCSPLanding({
+        el: @$('#apcsp-landing')[0]
+      })
+
     @$el.find('pre>code').each ->
       els = $(@)
       c = els.parent()

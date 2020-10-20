@@ -4,7 +4,7 @@ Level = require 'models/Level'
 LevelSession = require 'models/LevelSession'
 LeaderboardCollection  = require 'collections/LeaderboardCollection'
 LadderSubmissionView = require 'views/play/common/LadderSubmissionView'
-{teamDataFromLevel} = require './utils'
+{teamDataFromLevel, scoreForDisplay} = require './utils'
 require 'd3/d3.js'
 
 module.exports = class MyMatchesTabView extends CocoView
@@ -86,8 +86,7 @@ module.exports = class MyMatchesTabView extends CocoView
           name = opponentUser?.name
           name ||= opponentUser.firstName + ' ' + opponentUser.lastName if opponentUser?.firstName
           name ||= "Anonymous #{opponent.userID.substr(18)}" if opponentUser
-          unless name
-            console.log 'found', nameMap[opponent.userID], 'for', opponent.userID, "http://codecombat.com/db/user/#{opponent.userID}"
+          name ||= opponent.name
           name ||= '<bad match data>'
           if name.length > 21
             name = name.substr(0, 18) + '...'
@@ -109,7 +108,7 @@ module.exports = class MyMatchesTabView extends CocoView
       placeholder = $(el)
       sessionID = placeholder.data('session-id')
       session = _.find @sessions.models, {id: sessionID}
-      if @level.get('slug') in ['ace-of-coders', 'elemental-wars', 'the-battle-of-sky-span', 'tesla-tesoro', 'escort-duty']
+      if @level.get('mirrorMatch')
         mirrorSession = (s for s in @sessions.models when s.get('team') isnt session.get('team'))[0]
       ladderSubmissionView = new LadderSubmissionView session: session, level: @level, mirrorSession: mirrorSession
       @insertSubView ladderSubmissionView, placeholder
@@ -155,15 +154,16 @@ module.exports = class MyMatchesTabView extends CocoView
       time +=1
       return {
         date: time
-        close: d[1] * 100
+        close: scoreForDisplay d[1]
       }
 
     x.domain(d3.extent(data, (d) -> d.date))
     [yMin, yMax] = d3.extent(data, (d) -> d.close)
+    axisFactor = 500
     yRange = yMax - yMin
     yMid = yMin + yRange / 2
-    yMin = Math.min yMin, yMid - 500
-    yMax = Math.max yMax, yMid + 500
+    yMin = Math.min yMin, yMid - axisFactor
+    yMax = Math.max yMax, yMid + axisFactor
     y.domain([yMin, yMax])
 
     svg.append('g')

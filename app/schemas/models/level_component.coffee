@@ -32,8 +32,21 @@ PropertyDocumentationSchema = c.object {
   codeLanguages: c.array {title: 'Specific Code Languages', description: 'If present, then only the languages specified will show this documentation. Leave unset for language-independent documentation.', format: 'code-languages-array'}, c.shortString(title: 'Code Language', description: 'A specific code language to show this documentation for.', format: 'code-language')
   # not actual JS types, just whatever they describe...
   type: c.shortString(title: 'Type', description: 'Intended type of the property.')
+  shortDescription:
+    oneOf: [
+      {title: 'Short Description', type: 'string', description: 'Short Description of the property.', maxLength: 1000, format: 'markdown'}
+      {
+        type: 'object',
+        title: 'Language Descriptions (short)',
+        description: 'Property short-descriptions by code language.',
+        additionalProperties: {type: 'string', description: 'Short Description of the property.', maxLength: 1000, format: 'markdown'}
+        format: 'code-languages-object'
+        default: {javascript: ''}
+      }
+    ]
   description:
     oneOf: [
+      {title: 'Description', type: 'string', description: 'Description of the property.', maxLength: 1000, format: 'markdown'}
       {
         type: 'object',
         title: 'Language Descriptions',
@@ -42,7 +55,6 @@ PropertyDocumentationSchema = c.object {
         format: 'code-languages-object'
         default: {javascript: ''}
       }
-      {title: 'Description', type: 'string', description: 'Description of the property.', maxLength: 1000, format: 'markdown'}
     ]
   args: c.array {title: 'Arguments', description: 'If this property has type "function", then provide documentation for any function arguments.'}, c.FunctionArgumentSchema
   owner: {title: 'Owner', type: 'string', description: 'Owner of the property, like "this" or "Math".'}
@@ -106,6 +118,13 @@ PropertyDocumentationSchema = c.object {
         title: 'Variable Name'
         description: 'Variable name this property is autocompleted into.'
         default: 'result'
+      type:
+        type: 'object'
+        title: 'Variable Type'
+        description: 'Variable return types by code language. Can usually leave blank. Fill in if it is a primitive type and not auto in C++.'
+        additionalProperties: {type: 'string', description: 'Description of the return value.', maxLength: 1000}
+        format: 'code-languages-object'
+        default: {cpp: 'auto'}
 
 DependencySchema = c.object {
   title: 'Component Dependency'
@@ -134,6 +153,7 @@ LevelComponentSchema = c.object {
     dependencies: []  # TODO: should depend on something by default
     propertyDocumentation: []
     configSchema: {}
+    context: {}
 }
 c.extendNamedProperties LevelComponentSchema  # let's have the name be the first property
 LevelComponentSchema.properties.name.pattern = c.classNamePattern
@@ -152,10 +172,10 @@ _.extend LevelComponentSchema.properties,
     type: 'string'
     title: 'Language'
     description: 'Which programming language this Component is written in.'
-    'enum': ['coffeescript']
+    'enum': ['coffeescript', 'javascript']
   code:
     title: 'Code'
-    description: 'The code for this Component, as a CoffeeScript class. TODO: add link to documentation for how to write these.'
+    description: 'The code for this Component, as a CoffeeScript/JavaScript class. TODO: add link to documentation for how to write these.'
     type: 'string'
     format: 'coffee'
   js:
@@ -171,6 +191,17 @@ _.extend LevelComponentSchema.properties,
     title: 'Official'
     description: 'Whether this is an official CodeCombat Component.'
   searchStrings: {type: 'string'}
+  context: {
+    type: 'object'
+    title: 'Code context'
+    additionalProperties: { type: 'string' }
+    default: {}
+  }
+  i18n: {
+    type: 'object',
+    format: 'i18n',
+    props: ['context'], description: 'Help translate the code context'
+  }
 
 c.extendBasicProperties LevelComponentSchema, 'level.component'
 c.extendSearchableProperties LevelComponentSchema
@@ -178,5 +209,6 @@ c.extendVersionedProperties LevelComponentSchema, 'level.component'
 c.extendPermissionsProperties LevelComponentSchema, 'level.component'
 c.extendPatchableProperties LevelComponentSchema
 c.extendTranslationCoverageProperties LevelComponentSchema
+c.extendAlgoliaProperties LevelComponentSchema
 
 module.exports = LevelComponentSchema

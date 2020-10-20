@@ -1,10 +1,13 @@
-<template lang="jade">
+<template lang="pug">
 div.container
   h1 Files
 
   select#folder-select(v-model="directory")
     option(value="music") Music
     option(value="interface") Interface
+    option(value="cinematic") Cinematic
+    //- Dont use value 'interactive', since it gets converted to mongoose object id in server/routes/file.coffee parsePathIntoQuery
+    option(value="interactives") Interactives
 
   a.btn.btn-primary#upload-button
     span.glyphicon.glyphicon-upload(v-on:click="uploadFile")
