@@ -22,6 +22,9 @@ UserLib = {
     return emailName if emailName
     return 'Anonymous'
   isSmokeTestUser: (user) -> utils.isSmokeTestEmail(user.email)
+  isTeacher: (user, includePossibleTeachers=false) ->
+    return true if includePossibleTeachers and user.role is 'possible teacher'  # They maybe haven't created an account but we think they might be a teacher based on behavior
+    return user.role in ['teacher', 'technology coordinator', 'advisor', 'principal', 'superintendent', 'parent']
 }
 
 module.exports = class User extends CocoModel
@@ -94,9 +97,7 @@ module.exports = class User extends CocoModel
 
   isCreatedByClient: -> @get('clientCreator')?
 
-  isTeacher: (includePossibleTeachers=false) ->
-    return true if includePossibleTeachers and @get('role') is 'possible teacher'  # They maybe haven't created an account but we think they might be a teacher based on behavior
-    return @get('role') in ['teacher', 'technology coordinator', 'advisor', 'principal', 'superintendent', 'parent']
+  isTeacher: (includePossibleTeachers=false) -> User.isTeacher(@attributes, includePossibleTeachers)
 
   isPaidTeacher: ->
     return false unless @isTeacher()
@@ -218,7 +219,8 @@ module.exports = class User extends CocoModel
   heroes: ->
     heroes = (me.get('purchased')?.heroes ? []).concat([ThangTypeConstants.heroes.captain, ThangTypeConstants.heroes.knight, ThangTypeConstants.heroes.champion, ThangTypeConstants.heroes.duelist])
     heroes.push ThangTypeConstants.heroes['code-ninja'] if window.serverConfig.codeNinjas
-    #heroes = _.values ThangTypeConstants.heroes if me.isAdmin()
+    teamDerBeztClanId = '601351bb4b79b4013e198fbe'
+    heroes.push ThangTypeConstants.heroes['armando-hoyos'] if teamDerBeztClanId in (me.get('clans') ? [])
     heroes
   items: -> (me.get('earned')?.items ? []).concat(me.get('purchased')?.items ? []).concat([ThangTypeConstants.items['simple-boots']])
   levels: -> (me.get('earned')?.levels ? []).concat(me.get('purchased')?.levels ? []).concat(LevelConstants.levels['dungeons-of-kithgard'])
@@ -524,7 +526,7 @@ module.exports = class User extends CocoModel
 
   subscribe: (token, options={}) ->
     stripe = _.clone(@get('stripe') ? {})
-    stripe.planID = 'basic'
+    stripe.planID = options.planID || 'basic'
     stripe.token = token.id
     stripe.couponID = options.couponID if options.couponID
     @set({stripe})
@@ -545,6 +547,11 @@ module.exports = class User extends CocoModel
     options.url = _.result(@, 'url') + "/stripe/recipients/#{id}"
     options.method = 'DELETE'
     return $.ajax(options)
+
+  age: -> utils.yearsSinceMonth me.get('birthday')
+
+  isInAcademicaClan: ->
+    return Array.isArray(@get('clans')) and @get('clans')?.indexOf('5ff88bcdfe17d7bb1c7d2d00') isnt -1
 
   # Feature Flags
   # Abstract raw settings away from specific UX changes
@@ -586,16 +593,7 @@ module.exports = class User extends CocoModel
   showOpenResourceLink: -> not (features?.china ? false)
   useStripe: -> (not ((features?.china ? false) or (features?.chinaInfra ? false))) and (@get('preferredLanguage') isnt 'nl-BE')
   canDeleteAccount: -> not (features?.china ? false)
-
-  # Ozaria flags
-  showOzariaCampaign: -> @isAdmin()
-  hasCinematicAccess: -> @isAdmin()
-  hasCharCustomizationAccess: -> @isAdmin()
-  hasAvatarSelectorAccess: -> @isAdmin()
-  hasCutsceneAccess: -> @isAdmin()
-  hasInteractiveAccess: -> @isAdmin()
-  hasIntroLevelAccess: -> @isAdmin()
-
+  canAutoFillCode: -> @isAdmin() || @isTeacher() || @isInGodMode()
 
 tiersByLevel = [-1, 0, 0.05, 0.14, 0.18, 0.32, 0.41, 0.5, 0.64, 0.82, 0.91, 1.04, 1.22, 1.35, 1.48, 1.65, 1.78, 1.96, 2.1, 2.24, 2.38, 2.55, 2.69, 2.86, 3.03, 3.16, 3.29, 3.42, 3.58, 3.74, 3.89, 4.04, 4.19, 4.32, 4.47, 4.64, 4.79, 4.96,
   5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 10, 10.5, 11, 11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15
