@@ -17,9 +17,10 @@ const interactiveSchema = {
   additionalProperties: false,
   properties: {
     interactiveType: {
-      'enum': ['draggable-ordering', 'insert-code', 'draggable-classification', 'multiple-choice', 'fill-in-code', 'draggable-statement-completion'],
+      enum: ['draggable-ordering', 'insert-code', 'draggable-classification', 'multiple-choice', 'fill-in-code', 'draggable-statement-completion'],
       title: 'Type of interactive'
     },
+    displayName: schema.shortString({ title: 'Display Name' }),
     promptText: { type: 'string', title: 'Prompt text' },
     draggableOrderingData: interactiveTypeSchema.interactiveDraggableOrderingSchema,
     insertCodeData: interactiveTypeSchema.interactiveInsertCodeSchema,
@@ -27,13 +28,13 @@ const interactiveSchema = {
     multipleChoiceData: interactiveTypeSchema.interactiveMultipleChoiceSchema,
     fillInCodeData: interactiveTypeSchema.interactiveFillInCodeSchema,
     draggableStatementCompletionData: interactiveTypeSchema.interactiveDraggableStatementCompletionSchema,
-    unitCodeLanguage: { 'enum': ['python', 'javascript', 'both'], title: 'Programming Language' },
-    i18n: { type: 'object', format: 'i18n', props: ['promptText'], description: 'Help translate this interactive.' },
+    unitCodeLanguage: { enum: ['python', 'javascript', 'both'], title: 'Programming Language' },
+    i18n: { type: 'object', format: 'i18n', props: ['name', 'displayName', 'promptText'], description: 'Help translate this interactive.' },
     defaultArtAsset: { type: 'string', format: 'image-file', title: 'Default Art Asset' },
     documentation: schema.object({
       title: 'Documentation',
       description: 'Documentation articles relating to this interactive.',
-      'default': { specificArticles: [] },
+      default: { specificArticles: [] },
       properties: {
         specificArticles: schema.array({ title: 'Specific Articles', description: 'Specific documentation articles that live only in this interactive.', uniqueItems: true }, SpecificArticleSchema)
       }
@@ -42,91 +43,91 @@ const interactiveSchema = {
   allOf: [
     {
       if: {
-        'properties': { 'interactiveType': { 'const': 'draggable-ordering' } }
+        properties: { interactiveType: { const: 'draggable-ordering' } }
       },
       then: {
-        'properties': {
-          'insertCodeData': { type: 'null' },
-          'draggableClassificationData': { type: 'null' },
-          'multipleChoiceData': { type: 'null' },
-          'fillInCodeData': { type: 'null' },
-          'draggableStatementCompletionData': { type: 'null' },
-          'unitCodeLanguage': { 'enum': ['python', 'javascript', 'both'] }
+        properties: {
+          insertCodeData: { type: 'null' },
+          draggableClassificationData: { type: 'null' },
+          multipleChoiceData: { type: 'null' },
+          fillInCodeData: { type: 'null' },
+          draggableStatementCompletionData: { type: 'null' },
+          unitCodeLanguage: { enum: ['python', 'javascript', 'both'] }
         }
       }
     },
     {
       if: {
-        'properties': { 'interactiveType': { 'const': 'insert-code' } }
+        properties: { interactiveType: { const: 'insert-code' } }
       },
       then: {
-        'properties': {
-          'draggableOrderingData': { type: 'null' },
-          'draggableClassificationData': { type: 'null' },
-          'multipleChoiceData': { type: 'null' },
-          'fillInCodeData': { type: 'null' },
-          'draggableStatementCompletionData': { type: 'null' },
-          'unitCodeLanguage': { 'enum': ['python', 'javascript'] }
+        properties: {
+          draggableOrderingData: { type: 'null' },
+          draggableClassificationData: { type: 'null' },
+          multipleChoiceData: { type: 'null' },
+          fillInCodeData: { type: 'null' },
+          draggableStatementCompletionData: { type: 'null' },
+          unitCodeLanguage: { enum: ['python', 'javascript'] }
         }
       }
     },
     {
       if: {
-        'properties': { 'interactiveType': { 'const': 'draggable-classification' } }
+        properties: { interactiveType: { const: 'draggable-classification' } }
       },
       then: {
-        'properties': {
-          'draggableOrderingData': { type: 'null' },
-          'insertCodeData': { type: 'null' },
-          'multipleChoiceData': { type: 'null' },
-          'fillInCodeData': { type: 'null' },
-          'draggableStatementCompletionData': { type: 'null' },
-          'unitCodeLanguage': { 'enum': ['python', 'javascript', 'both'] }
+        properties: {
+          draggableOrderingData: { type: 'null' },
+          insertCodeData: { type: 'null' },
+          multipleChoiceData: { type: 'null' },
+          fillInCodeData: { type: 'null' },
+          draggableStatementCompletionData: { type: 'null' },
+          unitCodeLanguage: { enum: ['python', 'javascript', 'both'] }
         }
       }
     },
     {
       if: {
-        'properties': { 'interactiveType': { 'const': 'multiple-choice' } }
+        properties: { interactiveType: { const: 'multiple-choice' } }
       },
       then: {
-        'properties': {
-          'draggableOrderingData': { type: 'null' },
-          'insertCodeData': { type: 'null' },
-          'draggableClassificationData': { type: 'null' },
-          'fillInCodeData': { type: 'null' },
-          'draggableStatementCompletionData': { type: 'null' },
-          'unitCodeLanguage': { 'enum': ['python', 'javascript', 'both'] }
+        properties: {
+          draggableOrderingData: { type: 'null' },
+          insertCodeData: { type: 'null' },
+          draggableClassificationData: { type: 'null' },
+          fillInCodeData: { type: 'null' },
+          draggableStatementCompletionData: { type: 'null' },
+          unitCodeLanguage: { enum: ['python', 'javascript', 'both'] }
         }
       }
     },
     {
       if: {
-        'properties': { 'interactiveType': { 'const': 'fill-in-code' } }
+        properties: { interactiveType: { const: 'fill-in-code' } }
       },
       then: {
-        'properties': {
-          'draggableOrderingData': { type: 'null' },
-          'insertCodeData': { type: 'null' },
-          'draggableClassificationData': { type: 'null' },
-          'multipleChoiceData': { type: 'null' },
-          'draggableStatementCompletionData': { type: 'null' },
-          'unitCodeLanguage': { 'enum': ['python', 'javascript'] }
+        properties: {
+          draggableOrderingData: { type: 'null' },
+          insertCodeData: { type: 'null' },
+          draggableClassificationData: { type: 'null' },
+          multipleChoiceData: { type: 'null' },
+          draggableStatementCompletionData: { type: 'null' },
+          unitCodeLanguage: { enum: ['python', 'javascript'] }
         }
       }
     },
     {
       if: {
-        'properties': { 'interactiveType': { 'const': 'draggable-statement-completion' } }
+        properties: { interactiveType: { const: 'draggable-statement-completion' } }
       },
       then: {
-        'properties': {
-          'draggableOrderingData': { type: 'null' },
-          'insertCodeData': { type: 'null' },
-          'draggableClassificationData': { type: 'null' },
-          'multipleChoiceData': { type: 'null' },
-          'fillInCodeData': { type: 'null' },
-          'unitCodeLanguage': { 'enum': ['python', 'javascript', 'both'] }
+        properties: {
+          draggableOrderingData: { type: 'null' },
+          insertCodeData: { type: 'null' },
+          draggableClassificationData: { type: 'null' },
+          multipleChoiceData: { type: 'null' },
+          fillInCodeData: { type: 'null' },
+          unitCodeLanguage: { enum: ['python', 'javascript', 'both'] }
         }
       }
     }
@@ -135,5 +136,7 @@ const interactiveSchema = {
 
 schema.extendBasicProperties(interactiveSchema, 'interactive')
 schema.extendNamedProperties(interactiveSchema)
+schema.extendTranslationCoverageProperties(interactiveSchema)
+schema.extendPatchableProperties(interactiveSchema)
 
 module.exports = interactiveSchema

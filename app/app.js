@@ -1,7 +1,8 @@
 global.$ = window.$ = global.jQuery = window.jQuery = require('jquery');
 import 'bootstrap';
 import './app.sass';
-import 'babel-polyfill';
+import 'core-js/stable';
+import 'regenerator-runtime/runtime';
 
 /**
  * Fonts dynamically imported based on infra location
@@ -12,7 +13,7 @@ if (window.features && window.features.chinaUx) {
   import(/* webpackChunkName: "UsFont" */ 'app/styles/common/fontUS.sass');
 }
 
-require('app/vendor.js');
+require('app/vendor.js'); // can be loaded separately and cached for a longer time
 
 // require.context('app/schemas', true, /.*\.(coffee|jade)/)
 // require.context('app/models', true, /.*\.(coffee|jade)/)

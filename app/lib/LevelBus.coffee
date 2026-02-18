@@ -4,6 +4,8 @@ LevelSession = require 'models/LevelSession'
 utils = require 'core/utils'
 tagger = require 'lib/SolutionConceptTagger'
 store = require('core/store')
+Concepts = require 'collections/Concepts'
+globalVar = require 'core/globalVar'
 
 module.exports = class LevelBus extends Bus
 
@@ -50,6 +52,8 @@ module.exports = class LevelBus extends Bus
         @session.set({timesAutocompleteUsed})
         @changedSessionProperties.timesAutocompleteUsed = true
     )
+    if utils.useWebsocket
+      @wsBus = globalVar.application.wsBus
 
   init: ->
     super()
@@ -113,22 +117,21 @@ module.exports = class LevelBus extends Bus
 
     code[parts[0]] ?= {}
     code[parts[0]][parts[1]] = e.spell.getSource()
+
     @changedSessionProperties.code = true
+    @changedSessionProperties.heroCode = undefined
+    if e.spell.level.isType('ladder')
+      # lets always set heroCode for ladder so that we don't save hero-placeholder-1 anyway
+      @changedSessionProperties.heroCode = e.spell.getSource()
     @session.set({'code': code})
     @saveSession()
 
   onSpellCreated: (e) ->
     return unless @onPoint()
-    spellTeam = e.spell.team
-    @teamSpellMap ?= {}
-    @teamSpellMap[spellTeam] ?= []
-
-    unless e.spell.spellKey in @teamSpellMap[spellTeam]
-      @teamSpellMap[spellTeam].push e.spell.spellKey
     @changedSessionProperties.teamSpells = true
-    @session.set({'teamSpells': @teamSpellMap})
+    @session.set({'teamSpells': utils.teamSpells})
     @saveSession()
-    if spellTeam is me.team or (e.spell.otherSession and spellTeam isnt e.spell.otherSession.get('team'))
+    if e.spell.team is me.team or (e.spell.otherSession and e.spell.team isnt e.spell.otherSession.get('team'))
       # https://github.com/codecombat/codecombat/issues/81
       @onSpellChanged e  # Save the new spell to the session, too.
 
@@ -169,7 +172,7 @@ module.exports = class LevelBus extends Bus
   onScriptEnded: (e) ->
     return unless @onPoint()
     state = @session.get('state')
-    scripts = state.scripts
+    return unless scripts = state.scripts
     scripts.ended ?= {}
     return if scripts.ended[e.scriptID]?
     index = _.keys(scripts.ended).length + 1
@@ -199,11 +202,28 @@ module.exports = class LevelBus extends Bus
 
   onVictory: (e) ->
     return unless @onPoint()
+    return if utils.isOzaria and e and e.capstoneInProgress
     state = @session.get('state')
-    state.complete = true
-    @session.set('state', state)
-    @changedSessionProperties.state = true
-    @reallySaveSession()  # Make sure it saves right away; don't debounce it.
+    if utils.isCodeCombat
+      return if state.complete
+      state.complete = true
+      @session.set('state', state)
+      @changedSessionProperties.state = true
+      @reallySaveSession()  # Make sure it saves right away; don't debounce it.
+    else
+      needsImmediateSave = false
+      if not state.complete
+        state.complete = true
+        @session.set('state', state)
+        @changedSessionProperties.state = true
+        needsImmediateSave = true
+      if e.isCapstone and not @session.get 'published'
+        # Publish the capstone level if it is completed
+        @session.set 'published', true
+        @changedSessionProperties.published = true
+        needsImmediateSave = true
+      if needsImmediateSave
+        @reallySaveSession()  # Make sure it saves right away; don't debounce it.
 
   onNewGoalStates: (e) ->
     # TODO: this log doesn't capture when null-status goals are being set during world streaming. Where can they be coming from?
@@ -263,9 +283,14 @@ module.exports = class LevelBus extends Bus
     return if @session.fake
     if @changedSessionProperties.code
       @updateSessionConcepts()
+      heroCode = @changedSessionProperties.heroCode
+      delete @changedSessionProperties.heroCode
     Backbone.Mediator.publish 'level:session-will-save', session: @session
     patch = {}
     patch[prop] = @session.get(prop) for prop of @changedSessionProperties
+    if heroCode # let's only update trueSpell of session(hero-placeholder for all ladders)
+      patch.code = { 'hero-placeholder': { plan: heroCode }, 'hero-placeholder-1': { plan: '' } }
+    delete patch.code if _.isEmpty(patch.code) # don't update empty code
     @changedSessionProperties = {}
 
     # since updates are coming fast and loose for session objects
@@ -275,18 +300,31 @@ module.exports = class LevelBus extends Bus
 
   updateSessionConcepts: ->
     return unless @session.get('codeLanguage') in ['javascript', 'python']
-    try
-      tags = tagger({ast: @session.lastAST, language: @session.get('codeLanguage')})
-      tags = _.without(tags, 'basic_syntax')
-      @session.set('codeConcepts', tags)
-      @changedSessionProperties.codeConcepts = true
-    catch e
-      # Just in case the concept tagger system breaks. Esper needed fixing to handle
-      # the Python skulpt AST, the concept tagger is not fully tested, and this is a
-      # critical piece of code, so want to make sure this can fail gracefully.
-      console.error('Unable to parse concepts from this AST.')
-      console.error(e)
+    @loadConcepts (concepts) =>
+      try
+        tags = tagger({ast: @session.lastAST, language: @session.get('codeLanguage')}, concepts)
+        tags = _.without(tags, 'basic_syntax')
+        @session.set('codeConcepts', tags)
+        @changedSessionProperties.codeConcepts = true
+      catch e
+        # Just in case the concept tagger system breaks. Esper needed fixing to handle
+        # the Python skulpt AST, the concept tagger is not fully tested, and this is a
+        # critical piece of code, so want to make sure this can fail gracefully.
+        console.warn('Unable to parse concepts from this AST.')
+        console.warn(e)
 
+  loadConcepts: (onConceptsLoaded) ->
+    concepts = new Concepts([])
+    @listenTo(concepts, 'sync', onConceptsLoaded)
+    concepts.fetch(data: { skip: 0, limit: 1000, cacheEdge: true })
+
+  subscribeTeacher: (teacherId) ->
+    return unless @wsBus
+    topic = "user-#{teacherId.toString()}"
+    @wsBus.ws.subscribe(topic)
+    me.fetchOnlineTeachers([teacherId.toString()]).then((onlineTeacher) =>
+      @wsBus.updateOnlineFriends(onlineTeacher)
+    )
 
   destroy: ->
     clearInterval(@timerIntervalID)

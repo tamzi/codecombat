@@ -20,8 +20,6 @@ module.exports = class SegmentedSprite extends createjs.Container
   destroy: ->
     @handleTick = undefined
     @baseMovieClip.inUse = false if @baseMovieClip
-    delete @spriteSheet.mcPool
-    delete @spriteSheet
     @removeAllEventListeners()
 
   # CreateJS.Sprite-like interface
@@ -59,7 +57,10 @@ module.exports = class SegmentedSprite extends createjs.Container
       @animLength = if @frames then @frames.length else @baseMovieClip.timeline.duration
       @paused = true if @animLength is 1
 
-      if @frames
+      if @lastAnimation is @currentAnimation and @lastFrame?
+        # If we're going to the same animation, try to keep the same frame
+        @currentFrame = @lastFrame
+      else if @frames
         if randomStart
           @currentFrame = @frames[_.random(@frames.length - 1)]
         else
@@ -69,6 +70,8 @@ module.exports = class SegmentedSprite extends createjs.Container
           @currentFrame = then Math.floor(Math.random() * @animLength)
         else
           @currentFrame = 0
+      @lastAnimation = @currentAnimation
+      @lastFrame = @currentFrame
 
       @baseMovieClip.specialGoToAndStop(@currentFrame)
       for movieClip in @childMovieClips

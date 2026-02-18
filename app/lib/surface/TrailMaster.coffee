@@ -10,20 +10,19 @@ PAST_PATH_INTERVAL_DIVISOR = 2
 Camera = require './Camera'
 CocoClass = require 'core/CocoClass'
 createjs = require 'lib/createjs-parts'
+utils = require 'core/utils'
 
 module.exports = class TrailMaster extends CocoClass
   world: null
 
-  constructor: (@camera, @layerAdapter) ->
+  constructor: (@camera, @layerAdapter, @level) ->
     super()
     @tweenedSprites = []
     @tweens = []
-    @listenTo @layerAdapter, 'new-spritesheet', -> @generatePaths(@world, @thang)
 
   generatePaths: (@world, @thang) ->
     return if @generatingPaths
     @generatingPaths = true
-    @cleanUp()
     @createGraphics()
     pathDisplayObject = new createjs.Container(@layerAdapter.spriteSheet)
     pathDisplayObject.mouseEnabled = pathDisplayObject.mouseChildren = false
@@ -39,6 +38,7 @@ module.exports = class TrailMaster extends CocoClass
     @tweens = []
 
   createGraphics: ->
+    @startDotKey = @cachePathDot(TARGET_WIDTH, [94, 152, 81, 1], [0, 0, 0, 1])  # Just for CCJ so far; match start block color
     @targetDotKey = @cachePathDot(TARGET_WIDTH, @colorForThang(@thang.team, TARGET_ALPHA), [0, 0, 0, 1])
     @pastDotKey = @cachePathDot(PAST_PATH_WIDTH, @colorForThang(@thang.team, PAST_PATH_ALPHA), [0, 0, 0, 1])
     @futureDotKey = @cachePathDot(FUTURE_PATH_WIDTH, [255, 255, 255, FUTURE_PATH_ALPHA], @colorForThang(@thang.team, 1))
@@ -55,9 +55,14 @@ module.exports = class TrailMaster extends CocoClass
     return key
 
   colorForThang: (team, alpha=1.0) ->
-    rgb = [0, 255, 0]
-    rgb = [255, 0, 0] if team is 'humans'
-    rgb = [0, 0, 255] if team is 'ogres'
+    if utils.isCodeCombat
+      rgb = [0, 255, 0]
+      rgb = [255, 0, 0] if team is 'humans'
+      rgb = [0, 0, 255] if team is 'ogres'
+    else
+      rgb = [79, 202, 82]
+      rgb = [69, 170, 255] if team is 'humans'
+      rgb = [255, 0, 0] if team is 'ogres'
     rgb.push(alpha)
     return rgb
 
@@ -82,7 +87,8 @@ module.exports = class TrailMaster extends CocoClass
       sprite = new createjs.Sprite(@layerAdapter.spriteSheet)
       sprite.scaleX = sprite.scaleY = 1 / @layerAdapter.resolutionFactor
       sprite.scaleY *= @camera.y2x
-      sprite.gotoAndStop(@targetDotKey)
+      graphicsKey = if i is 0 and @level?.get('product') is 'codecombat-junior' then @startDotKey else @targetDotKey
+      sprite.gotoAndStop(graphicsKey)
       sprite.x = sup.x
       sprite.y = sup.y
       container.addChild(sprite)

@@ -1,8 +1,10 @@
 node_modules
 bower_components
 
-public
+public_coco
+public_ozar
 vendor
+hooks
 
 #################################################################
 #
@@ -25,6 +27,14 @@ app/core/store/modules/users.js
 app/core/store/modules/schoolAdministrator.js
 app/core/store/modules/classrooms.js
 app/core/store/modules/levelSessions.js
+app/core/services/paypal.js
+app/core/services/stripe.js
+app/core/utils.js
+app/core/treema-ext.js
+app/core/initialize.js
+app/core/blocklyUtils.js
+app/core/application.js
+app/core/social-handlers/GithubHandler.js
 app/models/Cinematic.js
 app/schemas/models/cinematic.schema.js
 app/schemas/selectors/cinematic.js
@@ -49,7 +59,6 @@ app/assets/javascripts/setImmediate.js
 app/assets/javascripts/workers/aether_worker.js
 app/assets/javascripts/workers/worker_world.js
 app/assets/javascripts/run-tests.js
-app/assets/dexecure-c167a5675c.js
 app/app.js
 
 app/core/components/PieComponent.vue
@@ -96,11 +105,8 @@ app/views/editor/cinematic/CinematicEditorComponent.vue
 scripts/github-translation-import.js
 scripts/copy-i18n-tags.js
 
-stories/Welcome.js
-stories/MyButton.js
-stories/index.stories.js
-
 test/app/core/social-handlers/GoogleClassroomHandler.spec.js
+test/app/core/utils.spec.coco.js
 test/app/models/Cinematic.spec.js
 test/app/lib/cinematic/AbstractCommand.spec.js
 test/app/lib/cinematic/commandRunner.spec.js
@@ -110,7 +116,6 @@ test/app/fixtures/leather-boots.thang.type.js
 test/app/fixtures/ogre-fangrider.thang.type.js
 test/app/fixtures/tree1.thang.type.js
 test/app/fixtures/ogre-munchkin-m.thang.type.js
-test/app/views/teachers/PurchaseStarterLicenseModal.spec.js
 test/app/views/courses/CourseVideosComponent.spec.js
 test/app/views/play/level/PlayLevelVideoView.spec.js
 test/app/views/play/level/modal/CourseVideosModalComponent.spec.js

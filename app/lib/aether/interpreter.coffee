@@ -77,8 +77,11 @@ updateState = (aether, evaluator) ->
 module.exports.parse = (aether, code) ->
   esper = window?.esper ? self?.esper ? global?.esper ? require 'esper.js'
   esper.plugin 'lang-' + aether.language.id
-  return esper.languages[aether.language.id].parser(code) if aether.language.id in ["coffeescript"]
-  return esper.languages[aether.language.id].parser(code, inFunctionBody: true)
+  realm = new esper.Engine({language: aether.language.id}).realm
+  return realm.parser(code) if aether.language.id in ['coffeescript']
+  return realm.parser(code, inFunctionBody: true)
+  # return esper.languages[aether.language.id].parser(code) if aether.language.id in ["coffeescript"]
+  # return esper.languages[aether.language.id].parser(code, inFunctionBody: true)
 
 ###
   Creates an instrumented function that we can execute.
@@ -156,7 +159,8 @@ makeYieldFilter = (aether) -> (engine, evaluator, e) ->
   if e? and e.type is 'event' and e.event is 'loopBodyStart'
 
     # Legacy programming languages use 'Literal' whilst C++ and Java use 'BooleanLiteral'.
-    if top.srcAst.type is 'WhileStatement' and (top.srcAst.test.type is 'Literal' or top.srcAst.test.type is 'BooleanLiteral')
+    # Lua generates `while true` loops from code like `for i, soldier in pairs(soldiers do)`, so for Lua, we ignore `true` test literals that don't have `loc` (because they are generated code)
+    if top.srcAst.type is 'WhileStatement' and (top.srcAst.test.type is 'Literal' or top.srcAst.test.type is 'BooleanLiteral') and not (aether.language.id is 'lua' and not top.srcAst.test.loc)
       if aether.whileLoopMarker?
         currentMark = aether.whileLoopMarker(top)
         if currentMark is top.mark

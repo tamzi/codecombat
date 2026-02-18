@@ -20,6 +20,9 @@ Thumbs.db
 .#*
 *#
 
+#Emacs - CTAGS
+TAGS
+
 # Vim
 .*.sw[a-z]
 *.un~i
@@ -62,6 +65,8 @@ tmp/
 
 # Brunch output
 public/
+public_coco/
+public_ozar/
 
 # Redis?
 dump.rdb
@@ -117,3 +122,8 @@ scripts/analytics/mongodb/.mainAuth.json
 
 # Build info file served by the production server
 .build_info.json
+
+.lighthouseci
+
+# Local VSCode history
+.history

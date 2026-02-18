@@ -35,7 +35,7 @@ class Media
 
 class AudioPlayer extends CocoClass
   subscriptions:
-    'audio-player:play-sound': (e) -> @playInterfaceSound e.trigger, e.volume
+    'audio-player:play-sound': (e) -> @playInterfaceSound e.trigger, e.volume, e.delay, e.pos, e.pan
 
   constructor: () ->
     super()
@@ -82,6 +82,8 @@ class AudioPlayer extends CocoClass
       return sound if sound = say['repeating-loop']
     if /move(up|down|left|right)/.test message
       return sound if sound = say["move-#{message[4...]}"]
+    if message is 'cleave'
+      return sound if sound = say["take-that"]
     defaults = say.defaultSimlish
     if say.swearingSimlish?.length and _.find(swears, (s) -> message.search(s) isnt -1)
       defaults = say.swearingSimlish
@@ -94,16 +96,16 @@ class AudioPlayer extends CocoClass
       filename = "/file/interface/#{name}#{@ext}"
       @preloadSound filename, name
 
-  playInterfaceSound: (name, volume=1) ->
+  playInterfaceSound: (name, volume=1, delay=0, pos=null, pan=0) ->
     return unless volume and me.get 'volume'
     filename = "/file/interface/#{name}#{@ext}"
     if @hasLoadedSound filename
-      @playSound name, volume
+      @playSound name, volume, delay, pos, pan
     else
       @preloadInterfaceSounds [name] unless filename of cache
       @soundsToPlayWhenLoaded[name] = volume
 
-  playSound: (name, volume=1, delay=0, pos=null) ->
+  playSound: (name, volume=1, delay=0, pos=null, pan=0) ->
     return console.error 'Trying to play empty sound?' unless name
     return unless volume and me.get 'volume'
     audioOptions = {volume: volume, delay: delay}
@@ -111,6 +113,7 @@ class AudioPlayer extends CocoClass
     unless @hasLoadedSound filename
       @soundsToPlayWhenLoaded[name] = audioOptions.volume
     audioOptions = @applyPanning audioOptions, pos if @camera and not @camera.destroyed and pos
+    audioOptions.pan ||= pan
     instance = createjs.Sound.play name, audioOptions
     instance
 
@@ -129,12 +132,12 @@ class AudioPlayer extends CocoClass
   nameForSoundReference: (sound) ->
     sound[@ext.slice(1)]  # mp3 or ogg
 
-  preloadSound: (filename, name) ->
+  preloadSound: (filename, name, channels=1) ->
     return unless filename
     return if filename of cache
     name ?= filename
     # SoundJS flips out if you try to register the same file twice
-    result = createjs.Sound.registerSound(filename, name, 1)  # 1: 1 channel
+    result = createjs.Sound.registerSound(filename, name, channels)
     cache[filename] = new Media(name)
 
   # PROGRESS CALLBACKS
@@ -149,7 +152,7 @@ class AudioPlayer extends CocoClass
       @soundsToPlayWhenLoaded[media.name] = false
     @notifyProgressChanged()
 
-  onSoundLoadError: (e) =>
+  onSoundLoadError: (e) ->
     console.error 'Could not load sound', e
 
   notifyProgressChanged: ->

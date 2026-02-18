@@ -2,13 +2,12 @@ export const TRACKER_LOGGING_ENABLED_QUERY_PARAM = 'tracker_logging'
 
 export const DEFAULT_USER_TRAITS_TO_REPORT = [
   'email', 'anonymous', 'dateCreated', 'hourOfCode', 'name', 'referrer', 'testGroupNumber', 'testGroupNumberUS',
-  'gender', 'lastLevel', 'siteref', 'ageRange', 'schoolName', 'coursePrepaidID', 'role', 'firstName', 'lastName',
-  'dateCreated'
+  'gender', 'lastLevel', 'siteref', 'ageRange', 'schoolName', 'coursePrepaidID', 'role', 'firstName', 'lastName'
 ]
 
 export const DEFAULT_TRACKER_INIT_TIMEOUT = 12000
 
-export function extractDefaultUserTraits(me) {
+export function extractDefaultUserTraits (me) {
   return DEFAULT_USER_TRAITS_TO_REPORT.reduce((obj, key) => {
     const meAttr = me[key]
     if (typeof meAttr !== 'undefined' && meAttr !== null) {
@@ -51,9 +50,9 @@ export default class BaseTracker {
 
   async resetIdentity () {}
 
-  async trackPageView (includeIntegrations = []) {}
+  async trackPageView () {}
 
-  async trackEvent (action, properties = {}, includeIntegrations = []) {}
+  async trackEvent (action, properties = {}) {}
 
   async trackTiming (duration, category, variable, label) {}
 
@@ -71,7 +70,7 @@ export default class BaseTracker {
   }
 
   set isInitialized (initialized) {
-    return this.initialized = initialized
+    this.initialized = initialized
   }
 
   get isInitializing () {
@@ -79,7 +78,7 @@ export default class BaseTracker {
   }
 
   set isInitializing (initializing) {
-    return this.initializing = initializing
+    this.initializing = initializing
   }
 
   get initializationComplete () {
@@ -100,7 +99,7 @@ export default class BaseTracker {
     this.isInitializing = true
 
     const initTimeout = new Promise((resolve, reject) => {
-      setTimeout(() => reject(new Error('Tracker init timeout')), this.trackerInitTimeout)
+      setTimeout(() => reject(new Error(`${this.constructor.name || 'Tracker'} init timeout`)), this.trackerInitTimeout)
     })
 
     try {
@@ -147,6 +146,9 @@ export default class BaseTracker {
       }
 
       this.onInitializeFail = (e) => {
+        if (!/init timeout/.test(e.message)) {
+          console.error(`${this.constructor.name || 'Tracker'} initialization failed`, e)
+        }
         reject(e)
         finishInitialization(false)
       }

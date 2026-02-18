@@ -3,34 +3,48 @@ export default {
   props: {
     doneRegistering: {
       type: Boolean,
-      required: true
+      required: true,
     },
     isClanCreator: {
-      required: true
+      required: true,
+      type: Function,
     },
     onHandleJoinCTA: {
-      required: true
-    }
-  }
+      required: true,
+      type: Function,
+    },
+    championshipActive: {
+      type: Boolean,
+      required: true,
+    },
+  },
 }
 </script>
 
 <template>
   <div class="section-first-cta">
-    <div class="text-code-section">
-      <img class="img-responsive" src="/images/pages/league/text_code.svg" width="501" height="147" />
-    </div>
     <div class="row flex-row text-center">
       <p
         class="subheader2"
         style="max-width: 800px;"
-      >{{ $t('league.summary') }}</p>
+      >
+        <!-- eslint-disable vue/no-v-html -->
+        <span v-if="championshipActive">
+          <span v-html="$t('league.championship_summary', { championshipArena: $t('league.golden_goal'), championshipMonth: $t('calendar.december'), championshipType: $t('league.cup') })" />
+        </span>
+        <span v-else>
+          {{ $t('league.summary') }}
+        </span>
+      </p>
     </div>
-    <div v-if="!doneRegistering && !isClanCreator()" class="row flex-row text-center xs-m-0">
-      <a class="btn btn-large btn-primary btn-moon" @click="onHandleJoinCTA">{{ $t('league.join_now') }}</a>
-    </div>
-    <div class="text-2021-section section-space">
-      <img class="img-responsive" src="/images/pages/league/text_2021.svg" width="501" height="147" />
+    <div
+      v-if="!doneRegistering && !isClanCreator()"
+      class="row flex-row text-center xs-m-0"
+    >
+      <a
+        class="btn btn-large btn-primary btn-moon"
+        @click="onHandleJoinCTA"
+      >{{ $t('league.join_now') }}</a>
     </div>
   </div>
 </template>

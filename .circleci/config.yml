@@ -4,7 +4,7 @@ jobs:
   copy-i18n-tags:
     docker:
       # specify the version you desire here
-      - image: jmif/coco-ci-node:latest
+      - image: public.ecr.aws/d6t0l2l9/coco-node-base:20.19.2
 
     working_directory: ~/repo
 
@@ -31,9 +31,7 @@ jobs:
             mkdir -p /tmp/hub
             cd /tmp/hub
 
-            curl -L -o hub.tgz https://github.com/github/hub/releases/download/v2.10.0/hub-linux-amd64-2.10.0.tgz
-            tar -xzvf hub.tgz --strip 1
-            sudo mv ./bin/hub /usr/local/bin
+            apt-get install -y hub
 
       - run: node -r coffee-script/register scripts/copy-i18n-tags.js
 
@@ -55,7 +53,7 @@ jobs:
             git push origin $BRANCH_NAME
 
             # TODO remove reviewer after we're confident in script runs
-            hub pull-request --base master --message 'Run copy-i18n-tags' --reviewer codeluggage
+            hub pull-request --base master --message 'Run copy-i18n-tags' --reviewer mrfinch
 
 
 workflows:

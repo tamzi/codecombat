@@ -1,6 +1,7 @@
 const DEFAULT_TRACKING_DOMAINS = [
-  'codecombat.com'
-];
+  'codecombat.com',
+  'ozaria.com'
+]
 
 const COCO_ENABLE_TRACKING_OVERRIDE_QUERY_PARAM = 'coco_tracking'
 
@@ -14,17 +15,17 @@ export default {
   namespaced: true,
 
   state: {
-    doNotTrack: window.navigator && window.navigator.doNotTrack === "1",
+    doNotTrack: window.navigator && window.navigator.doNotTrack === '1',
     spying: window.serverSession && typeof window.serverSession.amActually !== 'undefined',
-    trackingEnabledForEnvironment: DEFAULT_TRACKING_DOMAINS.includes(window.location.hostname),
-
+    switching: window.serverSession?.switchingUserActualId,
+    trackingEnabledForEnvironment: DEFAULT_TRACKING_DOMAINS.includes(window.location.hostname.replace('www.', '')),
     enableTrackingOverride: hasTrackingOverrideQueryParameter,
 
     cookieConsent: {
       answered: false,
       consented: false,
       declined: false
-    },
+    }
   },
 
   mutations: {
@@ -36,7 +37,7 @@ export default {
   getters: {
     disableAllTracking (state, getters, rootState, rootGetters) {
       if (state.enableTrackingOverride) {
-        return false;
+        return false
       }
 
       return state.cookieConsent.declined || state.doNotTrack || rootGetters['me/isSmokeTestUser'] || state.spying ||

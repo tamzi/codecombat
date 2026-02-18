@@ -1,90 +1,82 @@
 <script>
-  import ModalDivider from 'app/components/common/ModalDivider'
-  import Modal from 'app/components/common/Modal'
+import ModalDivider from 'app/components/common/ModalDivider'
+import Modal from 'app/components/common/Modal'
 
-  export default Vue.extend({
-    components: {
-      ModalDivider,
-      Modal
+export default Vue.extend({
+  components: {
+    ModalDivider,
+    Modal
+  },
+  data: () => ({
+  }),
+  methods: {
+    showError (error) {
+      console.error(error)
+      noty({
+        text: 'Unable to load chat (may be due to browser privacy features)',
+        layout: 'topCenter',
+        type: 'error',
+        timeout: 5000
+      })
     },
-    data: () => ({
-      zendeskError: null
-    }),
-    methods: {
-      showError (error) {
-        console.error(error)
-        noty({
-          text: 'Unable to load chat (may be due to browser privacy features)',
-          layout: 'topCenter',
-          type: 'error',
-          timeout: 5000
-        })
-      },
-      programaticallyClose () {
-        // Because this modal is created from Backbone, we don't have a clean way to
-        // close the modal other than interacting with data-dismiss='modal' through clicking.
-        $('#coco-modal-header-close-button').click()
-      },
-      clickedSalesChat () {
-        try {
-          window.tracker.drift.openChat()
-          this.programaticallyClose()
-        } catch (e) {
-          this.showError(e)
-        }
-      },
-      clickedSupportChat () {
-        try {
-          window.tracker.drift.startInteraction({ interactionId: 135698 })
-          this.programaticallyClose()
-        } catch (e) {
-          this.showError(e)
-        }
-      },
-      clickedEmail () {
-        try {
-          zE('webWidget', 'prefill', {
-            email: {
-              value: me.get('email')
-            }
-          })
-          zE('webWidget', 'open')
-          zE('webWidget', 'show')
-          this.programaticallyClose()
-        } catch (e) {
-          this.showError(e)
-          this.zendeskError = true
-        }
+    programaticallyClose () {
+      // Because this modal is created from Backbone, we don't have a clean way to
+      // close the modal other than interacting with data-dismiss='modal' through clicking.
+      $('#coco-modal-header-close-button').click()
+    },
+    clickedSalesChat () {
+      try {
+        zE('messenger', 'open')
+        this.programaticallyClose()
+        window.tracker.trackEvent('Sales chat opened')
+      } catch (e) {
+        this.showError(e)
+      }
+    },
+    clickedSupportChat () {
+      try {
+        zE('messenger', 'open')
+        this.programaticallyClose()
+        window.tracker.trackEvent('Support chat opened')
+      } catch (e) {
+        this.showError(e)
       }
     }
-  })
+  }
+})
 </script>
 
 <template>
   <modal
-      :backbone-dismiss-modal="true"
-      :title="$t('general.contact_us')"
+    :backbone-dismiss-modal="true"
+    :title="$t('general.contact_us')"
   >
     <div class="flex-container column">
       <p>{{ $t("general.chat_with_us") }} (9am-6pm ET)</p>
       <div class="flex-container">
         <div class="flex-container column">
-          <button @click.prevent="clickedSupportChat" class="btn btn-large btn-primary btn-moon">{{ $t("general.support") }}</button>
+          <button
+            class="btn btn-large btn-primary btn-moon"
+            @click.prevent="clickedSupportChat"
+          >
+            {{ $t("general.support") }}
+          </button>
         </div>
 
         <div class="flex-container column">
-          <button @click.prevent="clickedSalesChat" class="btn btn-large btn-primary btn-moon">{{ $t("general.sales") }}</button>
+          <button
+            class="btn btn-large btn-primary btn-moon"
+            @click.prevent="clickedSalesChat"
+          >
+            {{ $t("general.sales") }}
+          </button>
         </div>
       </div>
 
       <modal-divider />
 
-      <div v-if="zendeskError">
+      <div>
         {{ $t('general.email_us') }}: <a href="mailto:support@codecombat.com">support@codecombat.com</a>
-      </div>
-      <div v-else class="flex-container column">
-        <p>{{ $t("general.email_us") }}</p>
-        <button @click.prevent="clickedEmail" class="btn btn-large btn-primary btn-moon">{{ $t("general.email") }}</button>
       </div>
     </div>
   </modal>

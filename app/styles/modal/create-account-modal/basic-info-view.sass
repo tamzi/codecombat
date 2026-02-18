@@ -1,10 +1,30 @@
+@import "app/styles/style-flat-variables"
+@import "ozaria/site/styles/common/variables"
+
 #basic-info-view
+  @if $is-codecombat
+    .network-login
+      transition: filter 0.1s linear
+
+      &:hover
+        filter: brightness(110%)
+
+  .auth-network-logins
+    display: flex
+    align-items: center
+    justify-content: center
+    flex-direction: row
+    gap: 20px
 
   .gplus-login
-    margin-bottom: 20px
+    @if $is-codecombat
 
     .gplus-logo
-      width: 254px
+      @if $is-codecombat
+        width: 254px
+      @else
+        height: 50px
+        margin-right: 7px
 
   .facebook-login
 
@@ -14,6 +34,35 @@
       .facebook-logo
         height: 40px
 
+  .schoology-login,.classlink-login
+    #schoology-signup-btn,#classlink-signup-btn
+      padding: 4px
+      display: inline-flex
+      gap: 5px
+      justify-content: initial
+      align-items: center
+      border-radius: 5px
+      height: 45px
+      width: 100%
+      border: 1px solid #117bbc
+      color: black
+      background-color: white
+      font-size: 14px
+      img
+        width: 38px
+        height: 38px
+        border-radius: 50%
+
+  @if $is-codecombat
+    .clever-login
+
+      .clever-logo
+        // Match size of Google button
+        width: 154px
+        height: 52px
+        background: white
+        padding: 5px
+        border: 1px solid #117bbc
 
   // Forms
 
@@ -29,7 +78,12 @@
         text-align: right
 
       input
-        max-height: 5vh
+        @if $is-codecombat
+          max-height: 5vh
+        @else
+          max-height: 6vh
+          border: 1px solid $teal
+          color: $color-tertiary-brand
 
       .help-block
         float: right
@@ -68,7 +122,7 @@
     padding-right: 12px
 
   .optional-text
-    font-size: 12px;
+    font-size: 12px
 
   #want-in-school
     position: absolute
@@ -76,3 +130,12 @@
 
     #want-in-school-checkbox
       margin-top: 7px
+
+  @if not $is-codecombat
+    .row.or-row
+      margin-top: 20px
+
+  .library-signup-text
+    text-align: center
+    padding-bottom: 10px
+    font-weight: lighter

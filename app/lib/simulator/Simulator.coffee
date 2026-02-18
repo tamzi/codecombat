@@ -3,7 +3,7 @@ CocoClass = require 'core/CocoClass'
 LevelLoader = require 'lib/LevelLoader'
 GoalManager = require 'lib/world/GoalManager'
 God = require 'lib/God'
-{createAetherOptions, replaceSimpleLoops} = require 'lib/aether_utils'
+{createAetherOptions, replaceSimpleLoops, fetchToken} = require 'lib/aether_utils'
 LZString = require 'lz-string'
 
 SIMULATOR_VERSION = 4
@@ -40,7 +40,8 @@ module.exports = class Simulator extends CocoClass
     return if @destroyed
     url = '/queue/scoring/getTwoGames'
     if @options.singleLadder
-      url = "/db/level/#{@options.levelOriginal}/next-ladder-match"
+      url = "/db/level/#{@options.levelOriginal}/next-match"
+
     $.ajax
       url: url
       type: 'POST'
@@ -63,14 +64,18 @@ module.exports = class Simulator extends CocoClass
             timeout: 5000
           }
           @simulateAnotherTaskAfterDelay()
-      success: (taskData) =>
+      success: (taskData, textStatus, xhr) =>
         return if @destroyed
         unless taskData
-          @retryDelayInSeconds = 10
-          @trigger 'statusUpdate', "No games to simulate. Trying another game in #{@retryDelayInSeconds} seconds."
+          @retryDelayInSeconds = 5
+          @trigger 'statusUpdate', "Waiting #{@retryDelayInSeconds} seconds before next game."
           @simulateAnotherTaskAfterDelay()
           return
         @simulatingPlayerStrings = {}
+        if taskData.sessions[0].realTeam == taskData.sessions[1].realTeam # only random for ladder
+          newTeam = _.shuffle ['humans', 'ogres']
+          taskData.sessions[0].team = newTeam[0]
+          taskData.sessions[1].team = newTeam[1]
         for team in ['humans', 'ogres']
           session = _.find(taskData.sessions, {team: team})
           teamName = $.i18n.t 'ladder.' + team
@@ -93,7 +98,7 @@ module.exports = class Simulator extends CocoClass
         @supermodel ?= new SuperModel()
         @supermodel.resetProgress()
         @stopListening @supermodel, 'loaded-all'
-        @levelLoader = new LevelLoader supermodel: @supermodel, levelID: levelID, sessionID: @task.getFirstSessionID(), opponentSessionID: @task.getSecondSessionID(), headless: true
+        @levelLoader = new LevelLoader supermodel: @supermodel, levelID: levelID, sessionID: @task.getHumanSessionID(), opponentSessionID: @task.getOgresSessionID(), headless: true
 
         if @supermodel.finished()
           @simulateSingleGame()
@@ -159,8 +164,13 @@ module.exports = class Simulator extends CocoClass
     console.log status
     @trigger 'statusUpdate', status
 
+    if results.tournament?
+      url = '/db/tournament.match/record'
+      results.matchType = results.tournamentType
+    else
+      url = '/queue/scoring/recordTwoGames'
     $.ajax
-      url: '/queue/scoring/recordTwoGames'
+      url: url
       data: results
       type: 'PUT'
       parse: true
@@ -224,7 +234,7 @@ module.exports = class Simulator extends CocoClass
     @supermodel ?= new SuperModel()
     @supermodel.resetProgress()
     @stopListening @supermodel, 'loaded-all'
-    @levelLoader = new LevelLoader supermodel: @supermodel, levelID: levelID, sessionID: @task.getFirstSessionID(), opponentSessionID: @task.getSecondSessionID(), headless: true
+    @levelLoader = new LevelLoader supermodel: @supermodel, levelID: levelID, sessionID: @task.getHumanSessionID(), opponentSessionID: @task.getOgresSessionID(), headless: true
     if @supermodel.finished()
       @simulateGame()
     else
@@ -349,10 +359,17 @@ module.exports = class Simulator extends CocoClass
   cleanupAndSimulateAnotherTask: =>
     return if @destroyed
     @cleanupSimulation()
-    if @options.background or @noTasks
-      @fetchAndSimulateOneGame()
+    if me.get('email')?.includes('codecombat.com')
+      sleep = 2000
     else
-      @fetchAndSimulateTask()
+      sleep = Math.min(15000, (@simulatedByYou + 1) * 2000)
+
+    _.delay (=>
+      if @options.background or @noTasks
+        @fetchAndSimulateOneGame()
+      else
+        @fetchAndSimulateTask()
+    ), sleep
 
   cleanupSimulation: ->
     @stopListening @god
@@ -362,6 +379,8 @@ module.exports = class Simulator extends CocoClass
   formTaskResultsObject: (simulationResults) ->
     taskResults =
       taskID: @task.getTaskID()
+      tournament: @task.getTournamentId()
+      tournamentType: @task.getTournamentType()
       receiptHandle: @task.getReceiptHandle()
       originalSessionID: @task.getFirstSessionID()
       originalSessionRank: -1
@@ -379,6 +398,8 @@ module.exports = class Simulator extends CocoClass
         metrics:
           rank: @calculateSessionRank session.sessionID, simulationResults.goalStates, @task.generateTeamToSessionMap()
         shouldUpdateLastOpponentSubmitDateForLeague: session.shouldUpdateLastOpponentSubmitDateForLeague
+      if @task.getTournamentId()?
+        sessionResult.submissionId = session.submissionID
       if session.sessionID is taskResults.originalSessionID
         taskResults.originalSessionRank = sessionResult.metrics.rank
         taskResults.originalSessionTeam = session.team
@@ -430,16 +451,7 @@ module.exports = class Simulator extends CocoClass
       .then(() => spells)
 
   fetchToken: (source, language, spell) =>
-    if language not in ['java', 'cpp'] or /^\u56E7[a-zA-Z0-9+/=]+\f$/.test source
-      return Promise.resolve({source: source, spell: spell})
-
-    headers =  { 'Accept': 'application/json', 'Content-Type': 'application/json' }
-    m = document.cookie.match(/JWT=([a-zA-Z0-9.]+)/)
-    service = window?.localStorage?.kodeKeeperService or "/service/parse-code"
-    fetch service, {method: 'POST', mode:'cors', headers:headers, body:JSON.stringify({code: source, language: language})}
-    .then (x) => x.json()
-    .then (x) => {source: x.token, spell: spell}
-
+    fetchToken(source, language).then((token) => {source: token, spell: spell})
 
 class SimulationTask
   constructor: (@rawData) ->
@@ -464,7 +476,15 @@ class SimulationTask
 
   getSecondSessionID: -> @rawData.sessions[1].sessionID
 
+  getHumanSessionID: -> _.find(@rawData.sessions, {team: 'humans'}).sessionID
+
+  getOgresSessionID: -> _.find(@rawData.sessions, {team: 'ogres'}).sessionID
+
   getTaskID: -> @rawData.taskID
+
+  getTournamentId: -> @rawData.tournamentId
+
+  getTournamentType: -> @rawData.tournamentType
 
   getReceiptHandle: -> @rawData.receiptHandle
 

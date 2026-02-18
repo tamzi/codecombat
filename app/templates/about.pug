@@ -1,4 +1,4 @@
-extends /templates/base-flat.jade
+extends /templates/base-flat
 
 block content
   div(data-spy="scroll", data-target="#nav-container")
@@ -55,93 +55,31 @@ block content
           // Full time
           li
             .profile-pic
-              a(href="http://www.nickwinter.net" rel="external")
-                img(src="/images/pages/about/team-avatars/nick-avatar.png").img-thumbnail.avatar
-                img(src="/images/pages/about/team-headshots/nick-headshot.jpg").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/brehan-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/brehan-headshot.png").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name
-                a(href="http://www.nickwinter.net" rel="external") Nick Winter
-              small(data-i18n="about.nick_title")
+              h6.label.team-name Brehan Maul
+              small(data-i18n="about.ceo")
+              br
+
+          li
+            .profile-pic
+              img(src="/images/pages/about/team-avatars/chelsea-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/chelsea-headshot.jpg").img-thumbnail.headshot
+            .team-bio
+              h6.label.team-name Chelsea Johnson
+              small(data-i18n="about.coo")
               br
 
           li
             .profile-pic
               a(href="http://bryukh.com" rel="external")
                 img(src="/images/pages/about/team-avatars/bryukh-avatar.png").img-thumbnail.avatar
-                img(src="/images/pages/about/team-headshots/bryukh-headshot.jpg").img-thumbnail.headshot
+                img(src="/images/pages/about/team-headshots/bryukh-headshot.png").img-thumbnail.headshot
             .team-bio
               h6.label.team-name
-                a(href="http://bryukh.com" rel="external") Valentin Bryukhanov
-              small(data-i18n="about.bryukh_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/liz-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/liz-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Liz Coluni
-              small(data-i18n="about.sism_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/robarev-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/robarev-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Rob Arevalo
-              small(data-i18n="about.ae_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/lawrence-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/lawrence-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Lawrence Kotovets
-              small(data-i18n="about.csm_title")
-              br
-
-          li
-            .profile-pic
-              a(href="https://www.linkedin.com/in/stephanie-rockett-phd-b63a0464/" rel="external")
-                img(src="/images/pages/about/team-avatars/stephanie-avatar.png").img-thumbnail.avatar
-                img(src="/images/pages/about/team-headshots/stephanie-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name
-                a(href="https://www.linkedin.com/in/stephanie-rockett-phd-b63a0464/" rel="external") Stephanie Rockett
-              small(data-i18n="about.css_qa_title")
-              br
-
-          li
-            .profile-pic
-              a(href="https://andrewjakubowicz.me" rel="external")
-                img(src="/images/pages/about/team-avatars/andrew-avatar.png").img-thumbnail.avatar
-                img(src="/images/pages/about/team-headshots/andrew-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name
-                a(href="https://andrewjakubowicz.me" rel="external") Andrew Jakubowicz
-              small(data-i18n="about.sswe_title")
-              br
-
-          li
-            .profile-pic
-              a(href="http://www.magicalunderworld.com/" rel="external")
-                img(src="/images/pages/about/team-avatars/brian-avatar.png").img-thumbnail.avatar
-                img(src="/images/pages/about/team-headshots/brian-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name
-                a(href="http://www.magicalunderworld.com/" rel="external") Brian Freyermuth
-              small(data-i18n="about.brian_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/bobby-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/bobby-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Bobby Lockhart
-              small(data-i18n="about.bobby_title")
+                a(href="http://bryukh.com" rel="external") Valentin Briukhanov
+              small(data-i18n="about.game_director")
               br
 
           li
@@ -151,47 +89,7 @@ block content
             .team-bio
               h6.label.team-name Claire Armstrong
               small
-                span(data-i18n="about.ea_title")
-                span= " / "
-                span(data-i18n="about.om_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/chelsea-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/chelsea-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Chelsea Johnson
-              small(data-i18n="about.mo_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/daniela-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/daniela-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name
-                a(href="http://danielalao.com" rel="external") Daniela Lao
-              small(data-i18n="about.daniela_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/shasha-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/shasha-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name
-                a(href="http://www.shashaxdu.com/" rel="external") Shasha Du
-              small(data-i18n="about.spvd_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/bill-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/bill-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Bill Wang
-              small(data-i18n="about.bill_title")
+                span(data-i18n="about.som_title")
               br
 
           li
@@ -214,15 +112,6 @@ block content
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/matias-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/matias-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Matias Forbord
-              small(data-i18n="about.sswe_title")
-              br
-
-          li
-            .profile-pic
               img(src="/images/pages/about/team-avatars/yuqiang-avatar.png").img-thumbnail.avatar
               img(src="/images/pages/about/team-headshots/yuqiang-headshot.png").img-thumbnail.headshot
             .team-bio
@@ -241,124 +130,75 @@ block content
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/lizb-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/lizb-headshot.jpg").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/steven-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/steven-headshot.jpg").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Liz Bush
-              small(data-i18n="about.sdr_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/becky-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/becky-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Becky Haghighi
+              h6.label.team-name Steven Adkins
               small(data-i18n="about.sae_title")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/steven-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/steven-headshot.jpg").img-thumbnail.headshot
+              a(href="https://www.linkedin.com/in/saurabh-patel/" rel="external" target="_blank")
+                img(src="/images/pages/about/team-avatars/Saurabh-avatar.jpg").img-thumbnail.avatar
+                img(src="/images/pages/about/team-headshots/saurabh-headshot.jpeg").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Steven Adkins
-              small(data-i18n="about.sdr_title")
+              h6.label.team-name Saurabh Patel
+              small(data-i18n="about.eng_team_lead")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/julie-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/julie-headshot.png").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/gabrielle-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/gabrielle-headshot.jpg").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Julie Molnar
-              small(data-i18n="about.lcd_title")
+              h6.label.team-name Gabrielle Vanhoesen
+              small(data-i18n="about.scsm_title")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/charlotte-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/charlotte-headshot.png").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/tom-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/tom-headshot.jpg").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Charlotte Cheng
-              small(data-i18n="about.scd_title")
-              br
-
-          li
-            .profile-pic
-              img(src="/images/pages/about/team-avatars/taylor-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/taylor-headshot.jpg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Taylor Sobha
+              h6.label.team-name Tom Zarosinski
               small(data-i18n="about.ae_title")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/maria-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/maria-headshot.jpg").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/noah-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/noah-headshot.jpg").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Maria Quinones
+              h6.label.team-name Noah Williams
               small(data-i18n="about.csm_title")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/becky-white-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/becky-white-headshot.jpg").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/angelica-avatar.jpg").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/angelica-headshot.jpg").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Becky White
-              small(data-i18n="about.ae_title")
+              h6.label.team-name Angelica Telnik
+              small(data-i18n="about.mm_title")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/chris-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/chris-headshot.png").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/Sonia-avatar.jpg").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/sonia-headshot.png").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Chris Kaimmer
-              small(data-i18n="about.oa_title")
+              h6.label.team-name Sonia Spindt
+              small(data-i18n="about.scd_title")
               br
 
           li
             .profile-pic
-              img(src="/images/pages/about/team-avatars/sydney-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/sydney-headshot.png").img-thumbnail.headshot
+              img(src="/images/pages/about/team-avatars/lizd-avatar.png").img-thumbnail.avatar
+              img(src="/images/pages/about/team-headshots/lizd-headshot.png").img-thumbnail.headshot
             .team-bio
-              h6.label.team-name Sydney Olejnik
-              small(data-i18n="about.ac_title")
-              br
-
-          li
-            .profile-pic
-              //img(src="/images/pages/about/team-avatars/brehan-avatar.png").img-thumbnail.avatar
-              img(src="/images/pages/about/placeholder.png").img-thumbnail.avatar
-              img(src="/images/pages/about/team-headshots/brehan-headshot.png").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Brehan Maul
-              small(data-i18n="about.vpm_title")
-              br
-
-          li
-            .profile-pic
-              //img(src="/images/pages/about/team-avatars/mohit-avatar.png").img-thumbnail.avatar
-              //img(src="/images/pages/about/team-headshots/mohit-headshot.jpg").img-thumbnail.headshot
-              img(src="/images/pages/about/placeholder.png").img-thumbnail.avatar
-              img(src="/images/pages/about/placeholder.png").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Mohit Bumb
-              small(data-i18n="about.swe_title")
-              br
-
-          li
-            .profile-pic
-              a(href="https://www.linkedin.com/in/saurabh-patel/" rel="external" target="_blank")
-                //img(src="/images/pages/about/team-avatars/saurabh-avatar.png").img-thumbnail.avatar
-                img(src="/images/pages/about/placeholder.png").img-thumbnail.avatar
-                img(src="/images/pages/about/team-headshots/saurabh-headshot.jpeg").img-thumbnail.headshot
-            .team-bio
-              h6.label.team-name Saurabh Patel
-              small(data-i18n="about.swe_title")
+              h6.label.team-name Liz Derman
+              small(data-i18n="about.sae_title")
               br
 
         ul
@@ -457,37 +297,40 @@ block content
             .text-h5(data-i18n="about.story_long_way_2")
 
       #careers.anchor
-        .text-center
-          h3(data-i18n="about.jobs_title")
-          //- h4(data-i18n="about.jobs_subtitle")
-        #careers-row.row
-          .col-sm-6.col-md-5.col-md-offset-1.col-lg-4.col-lg-offset-0
-            #benefits
-              h5(data-i18n="about.jobs_benefits")
-              ul
-                li.small
-                  a.benefits-link(href='http://blog.triplebyte.com/fixing-the-inequity-of-startup-equity', data-i18n="about.jobs_benefit_9")
-                li.small(data-i18n="about.jobs_benefit_6")
-                li.small(data-i18n="about.jobs_benefit_10")
-                li.small(data-i18n="about.jobs_benefit_11")
-                li.small(data-i18n="about.jobs_benefit_4")
-                li.small(data-i18n="about.jobs_benefit_5")
+        if view.jobs && view.jobs.length
+          .text-center
+            h3(data-i18n="about.jobs_title")
+            //- h4(data-i18n="about.jobs_subtitle")
+          #careers-row.row
+            .col-sm-6.col-md-5.col-md-offset-1.col-lg-4.col-lg-offset-0
+              #benefits
+                h5(data-i18n="about.jobs_benefits")
+                ul
+                  li.small
+                    a.benefits-link(href='http://blog.triplebyte.com/fixing-the-inequity-of-startup-equity', data-i18n="about.jobs_benefit_9")
+                  li.small(data-i18n="about.jobs_benefit_6")
+                  li.small(data-i18n="about.jobs_benefit_11")
+                  li.small(data-i18n="about.jobs_benefit_4")
+                  li.small(data-i18n="about.jobs_benefit_5")
+                  li.small(data-i18n="about.jobs_benefit_12")
+                  li.small(data-i18n="about.jobs_benefit_14")
 
-
-          .col-sm-6.col-md-5.col-md-offset-1.col-lg-4.col-lg-offset-0
-            .job-listing
-              h5 Sales Development Representative
-                .text-center
-                  small.label
-                    | Remote
-                p.small CodeCombat is hiring sales development representatives to introduce our computer science education products to educators across the world.
-                a.job-link.btn.btn-lg.btn-navy(href="https://jobs.lever.co/codecombat/96aeca22-63a8-491e-83b0-499af3f9b006?lever-origin=applied&lever-source%5B%5D=CodeCombat" rel="external" target="_blank")
-                  span(data-i18n="about.learn_more")
-
-          //.col-sm-6.col-md-5.col-lg-4
-          //  .job-listing
-          //    h5 (No Open Roles)
-          //    p.small Check back later for updates on new positions at CodeCombat.
+            for job in view.jobs
+              - var location = job.categories ? job.categories.location : ''
+              - var commitment = job.categories ? job.categories.commitment : ''
+              .col-sm-6.col-md-5.col-md-offset-1.col-lg-4.col-lg-offset-0
+                .job-listing
+                  h5= job.text.replace(/ \(Remote\)$/i, '')
+                    .text-center
+                      small.label
+                        span= location || 'Remote'
+                        if commitment
+                          span  • #{commitment}
+                    .job-description
+                      for paragraph in (job.descriptionPlain || '').split('\n\n')
+                        p.small= paragraph
+                    a.job-link.btn.btn-lg.btn-navy(href=`https://jobs.lever.co/codecombat/${job.id}?lever-origin=applied&lever-source%5B%5D=CodeCombat` rel="external" target="_blank")
+                      span(data-i18n="about.learn_more")
 
       #contact.anchor
         .text-center
@@ -525,27 +368,27 @@ block content
                 .label(data-i18n="about.downloads_title")
                 ul
                   li
-                    a.small(href="http://files.codecombat.com/presspack/AboutCodeCombat.pdf")
+                    a.small(href="https://files.codecombat.com/presspack/AboutCodeCombat.pdf")
                       span(data-i18n="about.about_codecombat")
                       | (.pdf)
                   li
-                    a.small(href="http://files.codecombat.com/presspack/CodeCombat-Logo.ai")
+                    a.small(href="https://files.codecombat.com/presspack/CodeCombat-Logo.ai")
                       span(data-i18n="about.logo")
                       | (.ai)
                   li
-                    a.small(href="http://files.codecombat.com/presspack/CodeCombat-Logo.png")
+                    a.small(href="https://files.codecombat.com/presspack/CodeCombat-Logo.png")
                       span(data-i18n="about.logo")
                       | (.png)
                   li
-                    a.small(href="http://files.codecombat.com/presspack/GameImages.zip")
+                    a.small(href="https://files.codecombat.com/presspack/GameImages.zip")
                       span(data-i18n="about.screenshots")
                       | (.zip)
                   li
-                    a.small(href="http://files.codecombat.com/presspack/gameimages/CodeCombat_Splash.png")
+                    a.small(href="https://files.codecombat.com/presspack/gameimages/CodeCombat_Splash.png")
                       span(data-i18n="about.character_art")
                       | (.png)
                 .text-center
-                  a.btn.btn-lg.btn-primary-alt#download-button(href="http://files.codecombat.com/presspack/CodeCombat_PressPack.zip")
+                  a.btn.btn-lg.btn-primary-alt#download-button(href="https://files.codecombat.com/presspack/CodeCombat_PressPack.zip")
                     span.glyphicon.glyphicon-download-alt
                     span(data-i18n="about.download_all")
 
@@ -580,14 +423,13 @@ block content
           .col-sm-4.col-sm-offset-2
             p
               b CodeCombat Inc.
-            p 301 Howard Street
-            p Suite No. 830
-            p San Francisco, California 94105
+            p 2261 Market Street #4388
+            p San Francisco, California 94114
             a(href="mailto:team@codecombat.com") team@codecombat.com
           .col-sm-4
             p
               b(data-i18n="about.location_title")
-            iframe(width="370", height="280", frameBorder="2", src="https://www.google.com/maps/embed/v1/place?key=AIzaSyAIGQz3OMbv5YWivScUM86-zESjEgJR2Xo&q=301+Howard+St+Suite+830,+San+Francisco,+CA+94105")
+            iframe(width="370", height="280", frameBorder="2", src="https://www.google.com/maps/embed/v1/place?key=AIzaSyAIGQz3OMbv5YWivScUM86-zESjEgJR2Xo&q=2261+Market+St+%234388,+San+Francisco,+CA+94114")
         if me.get('preferredLanguage') == 'nl-NL' || me.get('preferredLanguage') == 'nl-BE'
           .row
             .col-sm-4.col-sm-offset-2

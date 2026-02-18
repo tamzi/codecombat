@@ -1,18 +1,25 @@
 import _ from 'lodash'
 const userSchema = require('schemas/models/user')
 const User = require('app/models/User')
+const Course = require('app/models/Course')
 const api = require('core/api')
 const utils = require('core/utils')
 
 const emptyUser = _.zipObject((_.keys(userSchema.properties).map((key) => [key, null])))
+const USER_SALES_CALL_ACCESS_LEVEL = User.SALES_CALL_ACCESS_LEVEL
+const COURSE_SALES_CALL_ACCESS_LEVEL = Course.SALES_CALL_ACCESS_LEVEL
 
 export default {
   namespaced: true,
   state: _.cloneDeep(emptyUser),
 
   getters: {
+    currentUserId (state) {
+      return state._id
+    },
+
     isInGodMode (state) {
-      return ((state || {}).permissions || []).indexOf('godmode') > -1
+      return ((state || {}).permissions || []).indexOf(User.PERMISSIONS.GOD_MODE) > -1 || ((state || {}).permissions || []).indexOf(User.PERMISSIONS.ONLINE_TEACHER) > -1
     },
 
     isAnonymous (state) { return state.anonymous === true },
@@ -33,30 +40,74 @@ export default {
       return !(state || {}).role && state.anonymous === false
     },
 
-    forumLink (state) {
-      let link = 'http://discourse.codecombat.com/'
-      const lang = (state.preferredLanguage || 'en-US').split('-')[0]
-      if (['zh', 'ru', 'es', 'fr', 'pt', 'de', 'nl', 'lt'].includes(lang)) {
-        link += `c/other-languages/${lang}`
-      }
-      return link
-    },
-
     isAdmin (state) {
       const permissions = state.permissions || []
-      return permissions.indexOf('admin') > -1
+      return permissions.indexOf(User.PERMISSIONS.COCO_ADMIN) > -1
     },
 
     isLicensor (state) {
-      return ((state != null ? state.permissions : undefined) || []).indexOf('licensor') > -1
+      return ((state != null ? state.permissions : undefined) || []).indexOf(User.PERMISSIONS.LICENSOR) > -1
+    },
+
+    isAPIClient (state) {
+      return ((state != null ? state.permissions : undefined) || []).indexOf(User.PERMISSIONS.API_CLIENT) > -1
     },
 
     isSchoolAdmin (state) {
-      return ((state != null ? state.permissions : undefined) || []).indexOf('schoolAdministrator') > -1
+      return ((state != null ? state.permissions : undefined) || []).indexOf(User.PERMISSIONS.SCHOOL_ADMINISTRATOR) > -1
     },
 
     preferredLocale (state) {
       return state.preferredLanguage || 'en-US'
+    },
+
+    isPaidTeacher (_state, _getters, _rootState, rootGetters) {
+      // should fetch prepaids before if they haven't been
+      const prepaids = rootGetters['prepaids/getPrepaidsByTeacher'](me.get('_id'))
+      if (me.isPaidTeacher()) {
+        return true
+      }
+
+      if (!prepaids) {
+        return false
+      }
+
+      const { pending, empty, available } = prepaids
+      if (pending.length + empty.length + available.length > 0) {
+        return true
+      }
+
+      return me.isPremium()
+    },
+
+    userAccessLevel (state, getters) {
+      let userAccessLevel = 'free'
+      if (getters.isPaidTeacher) {
+        userAccessLevel = 'paid'
+      } else if (me.activeSalesCallProducts().length > 0) {
+        userAccessLevel = USER_SALES_CALL_ACCESS_LEVEL
+      }
+      return userAccessLevel
+    },
+
+    isContentAccessible (state, getters) {
+      return (accessLevel) => {
+        const userAccessLevel = getters.userAccessLevel
+
+        const userAccessMap = {
+          free: ['free'],
+          [USER_SALES_CALL_ACCESS_LEVEL]: ['free', COURSE_SALES_CALL_ACCESS_LEVEL],
+          paid: ['free', COURSE_SALES_CALL_ACCESS_LEVEL, 'paid'],
+        }
+        return userAccessMap[userAccessLevel].includes(accessLevel)
+      }
+    },
+
+    /**
+     * @returns {object|undefined} avatar schema object or undefined if not defined.
+     */
+    getCh1Avatar (state) {
+      return (state.ozariaUserOptions || {}).avatar
     },
 
     inEU (state) {
@@ -89,14 +140,14 @@ export default {
 
     isPremium (state, getters) {
       return getters.isAdmin || getters.hasSubscription || getters.isInGodMode
-    }
+    },
   },
 
   mutations: {
     updateUser (state, updates) {
       // deep copy, since nested data may be changed, and vuex store restricts mutations
       return _.assign(state, $.extend(true, {}, updates))
-    }
+    },
   },
 
   actions: {
@@ -110,8 +161,20 @@ export default {
         })
     },
 
+    setCh1Avatar ({ state, commit }, { cinematicThangTypeId, cinematicPetThangId, avatarCodeString }) {
+      if (!(cinematicThangTypeId && cinematicPetThangId && avatarCodeString)) {
+        throw new Error('Require a cinematicThangTypeId, cinematicPetThangId, and avatarCodeString')
+      }
+
+      const ozariaConfig = state.ozariaUserOptions || {}
+      commit('updateUser', {
+        ozariaUserOptions:
+        { ...ozariaConfig, avatar: { cinematicThangTypeId, cinematicPetThangId, avatarCodeString } },
+      })
+    },
+
     authenticated ({ commit }, user) {
       commit('updateUser', user)
-    }
-  }
+    },
+  },
 }

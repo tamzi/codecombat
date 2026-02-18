@@ -1,8 +1,11 @@
 import api from 'core/api'
 import CocoClass from 'core/CocoClass'
+const SCOPE = 'https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.profile.emails https://www.googleapis.com/auth/classroom.rosters.readonly'
+
+const utils = require('core/utils')
 
 const GoogleClassroomAPIHandler = class GoogleClassroomAPIHandler extends CocoClass {
-  
+
   constructor () {
     if (me.useGoogleClassroom()) {
       application.gplusHandler.loadAPI()
@@ -12,32 +15,44 @@ const GoogleClassroomAPIHandler = class GoogleClassroomAPIHandler extends CocoCl
 
   loadClassroomsFromAPI () {
     return new Promise((resolve, reject) => {
-      gapi.client.load ('classroom', 'v1', () => {
-        gapi.client.classroom.courses.list({access_token: application.gplusHandler.token(), teacherId: me.get('gplusID'), courseStates: "ACTIVE"})
-        .then((r) => {
-          resolve(r.result.courses || [])
-          })
-        .catch ((err) => {
-          console.error("Error in fetching from Google Classroom:", err)
-          reject(err)
-          })
+      const fun = () => {
+        gapi.client.load('classroom', 'v1', () => {
+          gapi.client.classroom.courses.list({ access_token: application.gplusHandler.token(), teacherId: me.get('gplusID'), courseStates: 'ACTIVE' })
+            .then((r) => {
+              resolve(r.result.courses || [])
+            })
+            .catch((err) => {
+              console.error('Error in fetching from Google Classroom loadClassroom:', err)
+              reject(err)
+            })
         })
-      })
+      }
+      this.requestGoogleAccessToken(fun)
+    })
   }
 
   loadStudentsFromAPI (googleClassroomId, nextPageToken='') {
     return new Promise((resolve, reject) => {
-      gapi.client.load ('classroom', 'v1', () => {
-        gapi.client.classroom.courses.students.list({access_token: application.gplusHandler.token(), courseId: googleClassroomId, pageToken: nextPageToken})
+      const fun = () => gapi.client.load('classroom', 'v1', () => {
+        gapi.client.classroom.courses.students.list({ access_token: application.gplusHandler.token(), courseId: googleClassroomId, pageToken: nextPageToken })
         .then((r) => {
-          resolve(r.result || {})
+            resolve(r.result || {})
           })
         .catch ((err) => {
-          console.error("Error in fetching from Google Classroom:", err)
-          reject(err)
+            console.error('Error in fetching from Google Classroom loadStudent:', err)
+            reject(err)
           })
         })
-      })
+      if (!application.gplusHandler.token()) this.requestGoogleAccessToken(fun)
+      else fun()
+    })
+  }
+
+  requestGoogleAccessToken (callback) {
+    application.gplusHandler.requestGoogleAuthorization(
+      SCOPE,
+      callback
+    )
   }
 
 }
@@ -51,7 +66,11 @@ module.exports = {
     try {
       let gClass = me.get('googleClassrooms').find((c)=>c.id==gcId)
       if (gClass) {
-        gClass.importedToCoco = true
+        if (utils.isCodeCombat) {
+          gClass.importedToCoco = true
+        } else {
+          gClass.importedToOzaria = true
+        }
         await new Promise(me.save().then)
       }
       else {
@@ -72,7 +91,6 @@ module.exports = {
       const importedClassroomsNames = importedClassrooms.map((c) => {
         return { id: c.id, name: c.name }
       })
-     
       const classrooms = me.get('googleClassrooms') || []
       let mergedClassrooms = []
       importedClassroomsNames.forEach((imported) => {
@@ -95,11 +113,13 @@ module.exports = {
       return Promise.reject()
     }
   },
-  
+
   // Imports students from google classroom, create their account on coco and add to the coco classroom
   importStudentsToClassroom: async function (cocoClassroom) {
+    const store = require('core/store')
     try {
-      const googleClassroomId = cocoClassroom.get("googleClassroomId")
+      cocoClassroom = cocoClassroom?.attributes || cocoClassroom
+      const googleClassroomId = cocoClassroom.googleClassroomId
 
       let importedStudents = []
       let importStudentsResult = await this.gcApiHandler.loadStudentsFromAPI(googleClassroomId)
@@ -121,33 +141,47 @@ module.exports = {
         promises.push(api.users.signupFromGoogleClassroom(attrs))
       }
       const signupStudentsResult = await Promise.all(promises.map((p) => p.catch((err) => { err.isError=true; return err })))
-      
+
       const createdStudents = signupStudentsResult.filter((s) => !s.isError)
       const signupErrors = signupStudentsResult.filter((s) => s.isError && s.errorID != 'student-account-exists')
-      const existingStudents = signupStudentsResult.filter((s) => s.errorID == 'student-account-exists').map((s) => s.error)  // error contains the user object here
+      const existingStudents = signupStudentsResult
+        .filter((s) => s.errorID === 'student-account-exists') // TODO update error id to 'account-exists' since it might contain teacher/individual accounts also
+        .map((s) => s.error) // error contains the user object here
+        .filter((s) => (utils.isCodeCombat || s.role === 'student')) // For Ozaria: filter only student accounts, discard existing individual/teacher accounts
 
       console.debug("Students created:", createdStudents)
-        
+
       // Log errors for students whose accounts did not get created
       if (signupErrors.length > 0)
         console.error("Error in creating some students:", signupErrors)
 
       //Students to add in classroom = created students + existing students that are not already part of the classroom
-      const classroomNewMembers = createdStudents.concat(existingStudents.filter((s) => !cocoClassroom.get("members").includes(s._id)))
-      
-      if (classroomNewMembers.length > 0){
-        await api.classrooms.addMembers({ classroomID: cocoClassroom.get("_id"), members: classroomNewMembers })
+      const classroomNewMembers = createdStudents.concat(existingStudents.filter((s) => !cocoClassroom.members.includes(s._id)))
+
+      if (classroomNewMembers.length > 0) {
+        if (utils.isCodeCombat) {
+          await api.classrooms.addMembers({ classroomID: cocoClassroom._id, members: classroomNewMembers })
+        } else {
+          await store.dispatch('classrooms/addMembersToClassroom', { classroom: cocoClassroom, members: classroomNewMembers })
+        }
         noty ( {text: classroomNewMembers.length+' Students imported.', layout: 'topCenter', timeout: 3000, type: 'success' })
         return classroomNewMembers
-      }
-      else {
+      } else if (utils.isCodeCombat) {
         console.error("No new students imported. Error:", signupStudentsResult)
         return Promise.reject('No new students imported')
+      }
+      else if (signupErrors.length > 0) {
+        console.error("No new students imported. Error:", signupErrors)
+        return Promise.reject('No new students imported')
+      }
+      else {
+        noty({ text: $.i18n.t('teachers.no_new_students_imported'), layout: 'topCenter', type: 'success', timeout: 3000 })
+        return []
       }
     }
     catch (err) {
       console.error("Error in importing students", err)
-      return Promise.reject()
+      return Promise.reject(`Error in importing students: ${err.message}`)
     }
   }
 }

@@ -1,7 +1,7 @@
 @import "app/styles/mixins"
 @import "app/styles/bootstrap/variables"
 
-#course-victory-modal, #picoctf-victory-modal
+#course-victory-modal
   
   #loading-error, .loading-screen
     margin-top: 160px
@@ -18,6 +18,7 @@
     .modal-content
       position: relative
       margin-top: -251px
+      box-shadow: none
 
   //- Header
 
@@ -55,11 +56,3 @@
       background: #ba1d00
       padding: 6px 6px 3px
 
-html.no-borderimage
-  #course-victory-modal, #picoctf-victory-modal
-    .modal-dialog
-      margin-top: 251px
-    .background-wrapper
-      border: 0
-      background: url("/images/pages/play/level/modal/victory_modal_background.png")
-      height: 713px

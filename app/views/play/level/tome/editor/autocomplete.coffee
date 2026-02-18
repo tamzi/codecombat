@@ -1,5 +1,6 @@
 aceUtils = require 'core/aceUtils'
 ace = require('lib/aceContainer')
+{ translateJS } = require('lib/translate-utils')
 
 defaults =
   autoLineEndings:
@@ -24,6 +25,7 @@ defaults =
 
 # TODO: Create list of manual test cases
 
+# TODO: after migration to JS, when going from 1 level to next after completion, it fails with "Cannot call a class as a function". After migration, fix it.
 module.exports = class Autocomplete
   Tokenizer = ''
   BackgroundTokenizer = ''
@@ -40,6 +42,7 @@ module.exports = class Autocomplete
     defaultsCopy = _.extend {}, defaults
     @options = _.merge defaultsCopy, options
 
+    @onPopupFocusChange = _.throttle @onPopupFocusChange, 25
 
     #TODO: Renable option validation if we care
     #validationResult = optionsValidator @options
@@ -68,6 +71,13 @@ module.exports = class Autocomplete
       @copyCompleters()
       @activateCompleter()
       @editor.commands.on 'afterExec', @doLiveCompletion
+
+  destroy: ->
+    # Noticed a memory leak, so added a destroy function here
+    @editor.commands.off 'afterExec', @doLiveCompletion  # Seems important to do
+    @bgTokenizer?.stop?()  # Guessing
+    @snippetManager?.unregister @oldSnippets if @oldSnippets?  # Guessing
+    @snippetManager?.unregister @oldCustomSnippets if @oldCustomSnippets?
 
   setAceOptions: () ->
     aceOptions =
@@ -113,6 +123,18 @@ module.exports = class Autocomplete
           m.snippets.push s for s in snippets
           @snippetManager.register m.snippets
           @oldSnippets = m.snippets
+
+  addCustomSnippets: (snippets, language) ->
+    # add user custom identifiers. do not overwrite the codecombat snippets
+    @options.language = language
+    ace.config.loadModule 'ace/ext/language_tools', () =>
+      @snippetManager = ace.require('ace/snippets').snippetManager
+      snippetModulePath = 'ace/snippets/' + language
+      ace.config.loadModule snippetModulePath, (m) =>
+        if m?
+          @snippetManager.unregister @oldCustomSnippets if @oldCustomSnippets?
+          @snippetManager.register snippets
+          @oldCustomSnippets = snippets
 
   setLiveCompletion: (val) ->
     if val is true or val is false
@@ -168,7 +190,9 @@ module.exports = class Autocomplete
     if e.command.name is "backspace" or e.command.name is "insertstring"
       pos = editor.getCursorPosition()
       token = (new TokenIterator editor.getSession(), pos.row, pos.column).getCurrentToken()
-      if token? and token.type not in ['comment', 'string']
+      if e.args is '\n' # insert new line
+        return Backbone.Mediator.publish 'tome:completer-add-user-snippets', {}
+      if token? and token.type not in ['comment']
         prefix = @getCompletionPrefix editor
         # Bake a fresh autocomplete every keystroke
         editor.completer?.detach() if hasCompleter
@@ -196,6 +220,30 @@ module.exports = class Autocomplete
               Autocomplete.prototype.commands["Shift-Return"] = exitAndReturn
 
             editor.completer = new Autocomplete()
+            getCompletionPrefix = @getCompletionPrefix
+            editor.completer.gatherCompletions = (editor, callback) ->
+              session = editor.getSession()
+              pos = editor.getCursorPosition()
+
+              prefix = getCompletionPrefix(editor)
+
+              @base = session.doc.createAnchor(pos.row, pos.column - prefix.length)
+              @base.$insertRight = true
+
+              matches = []
+              total = editor.completers.length
+              editor.completers.forEach (completer, i) =>
+                completer.getCompletions(editor, session, pos, prefix, (err, results) =>
+                  if (!err && results)
+                    matches = matches.concat(results)
+                  # Fetch prefix again, because they may have changed by now
+                  callback(null, {
+                    prefix: getCompletionPrefix(editor),
+                    matches: matches,
+                    finished: (--total == 0)
+                  })
+                )
+              return true
 
           # Disable autoInsert and show popup
           editor.completer.autoSelect = true
@@ -205,7 +253,7 @@ module.exports = class Autocomplete
           # Hide popup if too many suggestions
           # TODO: Completions aren't asked for unless we show popup, so this is super hacky
           # TODO: Backspacing to yield more suggestions does not close popup
-          if editor.completer?.completions?.filtered?.length > 20
+          if editor.completer?.completions?.filtered?.length > 50
             editor.completer.detach()
 
           # Update popup CSS after it's been launched
@@ -217,6 +265,7 @@ module.exports = class Autocomplete
             $('.ace_autocomplete').css('line-height', @options.popupLineHeightPx + 'px') if @options.popupLineHeightPx?
             $('.ace_autocomplete').css('width', @options.popupWidthPx + 'px') if @options.popupWidthPx?
             editor.completer.popup.resize?()
+            editor.completer.popup.on("mousemove", @onPopupFocusChange(editor, TokenIterator))
 
             # TODO: Can't change padding before resize(), but changing it afterwards clears new padding
             # TODO: Figure out how to hook into events rather than using setTimeout()
@@ -229,6 +278,19 @@ module.exports = class Autocomplete
     # Update tokens for text completer
     if @options.completers.text and e.command.name in ['backspace', 'del', 'insertstring', 'removetolinestart', 'Enter', 'Return', 'Space', 'Tab']
       @bgTokenizer.fireUpdateEvent 0, @editor.getSession().getLength()
+
+  onPopupFocusChange: (editor, TokenIterator) =>
+    (e) =>
+      pos = e.getDocumentPosition()
+      it = new TokenIterator editor.completer.popup.session, pos.row, pos.column
+      word = null
+      if it.getCurrentTokenRow() is pos.row
+        line = editor.completer.completions.filtered[pos.row].caption
+        [fun, params] = line.split('(')
+        prefixParts = fun.split(/[.:]/g)
+        word = prefixParts.slice(-1)[0]
+        markerRange = new Range pos.row, pos.column, pos.row, pos.column + word.length
+      Backbone.Mediator.publish 'tome:completer-popup-focus-change', {word, markerRange}
 
   getCompletionPrefix: (editor) ->
     # TODO: this is not used to get prefix that is passed to completer.getCompletions
@@ -243,7 +305,9 @@ module.exports = class Autocomplete
         completer.identifierRegexps.forEach (identifierRegex) ->
           if not prefix and identifierRegex
             prefix = util.retrievePrecedingIdentifier line, pos.column, identifierRegex
-    prefix = util.retrievePrecedingIdentifier line, pos.column unless prefix?
+
+    identifierRegex = /['"\.a-zA-Z_0-9\$\-\u00A2-\uFFFF]/
+    prefix = util.retrievePrecedingIdentifier line, pos.column, identifierRegex unless prefix?
     prefix
 
   addCodeCombatSnippets: (level, spellView, e) ->
@@ -252,6 +316,69 @@ module.exports = class Autocomplete
     haveFindNearestEnemy = false
     haveFindNearest = false
     autocompleteReplacement = level.get("autocompleteReplacement") ? []
+    usedAutocompleteReplacement = []
+
+    fixLanguageSnippets = (doc, lang) ->
+      usedAutocompleteReplacement = []
+
+      if lang in ['lua', 'coffeescript', 'python', 'java', 'cpp'] and not doc?.snippets?[lang] and doc?.snippets?.javascript
+        # Automatically translate from the JavaScript snippet
+        doc.snippets[lang] = _.cloneDeep(doc.snippets.javascript)
+        doc.snippets[lang].tab = translateJS(doc.snippets[lang].tab, lang, false)
+        doc.snippets[lang].code = translateJS(doc.snippets[lang].code, lang, false)
+      else if lang in ['lua', 'coffeescript', 'python'] and not doc?.snippets?[lang] and doc?.snippets?.python
+        # These are mostly the same, so use the Python if JavaScript or language-specific ones aren't available
+        doc.snippets[lang] = doc.snippets.python
+
+      if doc?.snippets?[lang]
+        name = doc.name
+        replacement = _.find(autocompleteReplacement, (el) -> el.name is name)
+        if replacement
+          usedAutocompleteReplacement.push(replacement.name)
+        content = replacement?.snippets?[lang]?.code or doc.snippets[lang].code
+        if /loop/.test(content) and level.get 'moveRightLoopSnippet'
+          # Replace default loop snippet with an embedded moveRight()
+          content = switch lang
+            when 'python' then 'while True:\n    hero.moveRight()\n    ${1:}'
+            when 'javascript', 'java', 'cpp' then 'while (true) {\n    hero.moveRight();\n    ${1:}\n}'
+            else content
+        if /loop/.test(content) and level.isType('course', 'course-ladder')
+          # Temporary hackery to make it look like we meant while True: in our loop snippets until we can update everything
+          content = switch lang
+            when 'python' then content.replace /loop:/, 'while True:'
+            when 'javascript', 'java', 'cpp' then content.replace /loop/, 'while (true)'
+            when 'lua' then content.replace /loop/, 'while true then'
+            when 'coffeescript' then content
+            else content
+          name = switch lang
+            when 'python' then 'while True'
+            when 'coffeescript' then 'loop'
+            else 'while true'
+        # For now, update autocomplete to use hero instead of self/this, if hero is already used in the source.
+        # Later, we should make this happen all the time - or better yet update the snippets.
+        if /hero/.test(source) or not /(self[\.\:]|this\.|\@)/.test(source)
+          thisToken =
+            'python': /self/,
+            'javascript': /this/,
+            'java': /this/,
+            'cpp': /this/,
+            'lua': /self/
+          if thisToken[lang] and thisToken[lang].test(content)
+            content = content.replace thisToken[lang], 'hero'
+      return {doc, content, name}
+
+    # Add directional versions of CodeCombat Junior function snippets (just to autocomplete, not to visible methods/blocks area)
+    goProp = _.find(e.propGroups.Hero or [], (prop) -> prop.prop is 'go')
+    shouldAddExtraDirectionalAutocompletes = goProp and not _.find(e.propGroups.Hero, (prop) -> prop.prop is "go('up', 1)")
+    if shouldAddExtraDirectionalAutocompletes
+      e.propGroups = _.cloneDeep(e.propGroups)
+      for method in ['go', 'hit', 'zap', 'look', 'dist']
+        for dir in ['up', 'down', 'left', 'right']
+          originalProp = _.find(e.propGroups.Hero, (prop) -> prop.prop is method)
+          if originalProp
+            directionalSnippetProp = if method is 'go' then "#{method}('#{dir}', 1)" else "#{method}('#{dir}')"
+            e.propGroups.Hero.push {owner: 'snippets', prop: directionalSnippetProp, item: originalProp.item}
+
     for group, props of e.propGroups
       for prop in props
         if _.isString prop  # organizePalette
@@ -262,47 +389,16 @@ module.exports = class Autocomplete
         doc = _.find (e.allDocs['__' + prop] ? []), (doc) ->
           return true if doc.owner is owner
           return (owner is 'this' or owner is 'more') and (not doc.owner? or doc.owner is 'this')
-        if e.language in ['java', 'cpp'] and not doc?.snippets?[e.language] and doc?.snippets?.javascript
-          # These are mostly the same, so use the JavaScript ones if language-specific ones aren't available
-          doc.snippets[e.language] = doc.snippets.javascript
-        if doc?.snippets?[e.language]
-          name = doc.name
-          replacement = _.find(autocompleteReplacement, (el) -> el.name is name)
-          content = replacement?.snippets?[e.language]?.code or doc.snippets[e.language].code
-          if /loop/.test(content) and level.get 'moveRightLoopSnippet'
-            # Replace default loop snippet with an embedded moveRight()
-            content = switch e.language
-              when 'python' then 'while True:\n    hero.moveRight()\n    ${1:}'
-              when 'javascript', 'java', 'cpp' then 'while (true) {\n    hero.moveRight();\n    ${1:}\n}'
-              else content
-          if /loop/.test(content) and level.isType('course', 'course-ladder')
-            # Temporary hackery to make it look like we meant while True: in our loop snippets until we can update everything
-            content = switch e.language
-              when 'python' then content.replace /loop:/, 'while True:'
-              when 'javascript', 'java', 'cpp' then content.replace /loop/, 'while (true)'
-              when 'lua' then content.replace /loop/, 'while true then'
-              when 'coffeescript' then content
-              else content
-            name = switch e.language
-              when 'python' then 'while True'
-              when 'coffeescript' then 'loop'
-              else 'while true'
-          # For now, update autocomplete to use hero instead of self/this, if hero is already used in the source.
-          # Later, we should make this happen all the time - or better yet update the snippets.
-          if /hero/.test(source) or not /(self[\.\:]|this\.|\@)/.test(source)
-            thisToken =
-              'python': /self/,
-              'javascript': /this/,
-              'java': /this/,
-              'cpp': /this/,
-              'lua': /self/
-            if thisToken[e.language] and thisToken[e.language].test(content)
-              content = content.replace thisToken[e.language], 'hero'
 
+        {doc, content, name} = fixLanguageSnippets(doc, e.language)
+
+        if doc?.snippets?[e.language]
+          entryName = name
+          entryName = entryName.replace(/'/g, '"') if e.language in ['java', 'cpp']
           entry =
             content: content
             meta: $.i18n.t('keyboard_shortcuts.press_enter', defaultValue: 'press enter')
-            name: name
+            name: entryName
             tabTrigger: doc.snippets[e.language].tab
             importance: doc.autoCompletePriority ? 1.0
           haveFindNearestEnemy ||= name is 'findNearestEnemy'
@@ -319,10 +415,10 @@ module.exports = class Autocomplete
             type ?= switch e.language
               when 'javascript', 'java' then 'var'
               when 'cpp' then 'auto'
+              when 'lua' then 'local'
               else ''
             entry.captureReturn = switch e.language
-              when 'javascript', 'java', 'cpp' then type + ' ' + varName + ' = '
-              #when 'lua' then 'local ' + varName + ' = '  # TODO: should we do this?
+              when 'javascript', 'java', 'cpp', 'lua' then type + ' ' + varName + ' = '
               else varName + ' = '
 
     # TODO: Generalize this snippet replacement
@@ -344,8 +440,24 @@ module.exports = class Autocomplete
     if haveFindNearest and not haveFindNearestEnemy
       spellView.translateFindNearest()
 
+    for replacement in autocompleteReplacement
+      continue if replacement.name in usedAutocompleteReplacement
+      continue if not replacement.snippets
+
+      # in case level.get('autocompeteReplacement') is defined and without full-language snippets
+      {doc, content, name} = fixLanguageSnippets(replacement, e.language)
+
+      entry =
+        content: content
+        meta: $.i18n.t('keyboard_shortcuts.press_enter', defaultValue: 'press enter')
+        name: name
+        tabTrigger: doc.snippets?[e.language]?.tab
+        importance: doc.autoCompletePriority ? 1.0
+      snippetEntries.push entry
+
     # window.AutocompleteInstance = @Autocomplete  # For debugging. Make sure to not leave active when committing.
     # window.snippetEntries = snippetEntries
     lang = aceUtils.aceEditModes[e.language].substr 'ace/mode/'.length
     @addSnippets snippetEntries, lang
     spellView.editorLang = lang
+    snippetEntries

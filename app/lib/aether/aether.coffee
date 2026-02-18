@@ -14,8 +14,6 @@ optionsValidator = require './validators/options'
 languages = require './languages/languages'
 interpreter = require './interpreter'
 
-{ Unibabel } = require 'unibabel'
-
 module.exports = class Aether
   @execution: execution
   @addGlobal: protectBuiltins.addGlobal  # Call instance method version after instance creation to update existing global list
@@ -53,7 +51,7 @@ module.exports = class Aether
     #  aether.lastStatementRange = [rng.start, rng.end] if rng
 
     Object.defineProperty @, 'lastStatementRange',
-      get: () -> 
+      get: () ->
         rng = @esperEngine?.evaluator?.lastASTNodeProcessed?.originalRange
         return [rng.start, rng.end] if rng
 
@@ -123,6 +121,7 @@ module.exports = class Aether
     @reset()
     rawCode = @raw
     if /^\u56E7[a-zA-Z0-9+/=]+\f$/.test rawCode
+      { Unibabel } = require 'unibabel'  # Cannot be imported in Node.js context
       token = JSON.parse Unibabel.base64ToUtf8(rawCode.substr(1, rawCode.length-2))
       @raw = token.src
       if token.error
@@ -131,11 +130,12 @@ module.exports = class Aether
         problemOptions = error: error, code: token.src, codePrefix: "", reporter: @language.parserID, kind: error.index or error.id, type: 'transpile'
         @addProblem @createUserCodeProblem problemOptions
       else
+        @problems = @lint token.src
         @pure = token.src
         @ast = token.ast
     else
-      if @language.id in ['cpp']
-        throw new Error('C++ code cannot be transpiled client side.')
+      if @language.id in ['cpp', 'java']
+        throw new Error('C++/Java code cannot be transpiled client side, needs server transpilation.')
       @problems = @lint rawCode
       @pure = @purifyCode rawCode
     @pure
@@ -181,6 +181,7 @@ module.exports = class Aether
   # Add problem to the proper level's array within the given problems object (or @problems).
   addProblem: (problem, problems=null) ->
     return if problem.level is "ignore"
+    return if problem.message is 'Missing semicolon.' # TODO: configurable in esper instead?
     (problems ? @problems)[problem.level + "s"].push problem
     problem
 
@@ -212,7 +213,7 @@ module.exports = class Aether
       problemOptions = error: error, code: wrappedCode, codePrefix: @language.wrappedCodePrefix, reporter: @language.parserID, kind: error.index or error.id, type: 'transpile'
       @addProblem @createUserCodeProblem problemOptions
       return ''
-    
+
     return wrappedCode
 
 
@@ -234,30 +235,61 @@ module.exports = class Aether
   getStatementCount: ->
     # esper = window?.esper ? self?.esper ? global?.esper ? require 'esper.js'
     esper.plugin 'lang-' + @language.id
-    
+
     count = 0
     if @language.usesFunctionWrapping()
       root = @ast.body[0].body # We assume the 'code' is one function hanging inside the program.
     else
       root = @ast.body
 
+    forLoops = 0
+    variableDeclarations = 0
+    tempVariableDeclarations = 0
+
     traversal.walkASTCorrect root, (node) ->
       return if not node.type?
-      return if node.userCode == false
+      return if node.userCode is false
       if node.type in [
         'ExpressionStatement', 'ReturnStatement', 'ForStatement', 'ForInStatement',
         'WhileStatement', 'DoWhileStatement', 'FunctionDeclaration', 'VariableDeclaration',
-        'IfStatement', 'SwitchStatement', 'ThrowStatement', 'ContinueStatement', 'BreakStatement'
+        'IfStatement', 'SwitchStatement', 'ThrowStatement', 'ContinueStatement', 'BreakStatement',
+        'ForOfStatement'
       ]
         ++count
+      if node.type in ['ForStatement', 'ForInStatement', 'ForOfStatement']
+        ++forLoops
+      if node.type in ['VariableDeclaration']
+        ++variableDeclarations
+        internalTempRegex = /^(__temp\$|__lua\$tmp)/
+        if _.find(node.declarations || [], (dec) ->
+          _.find([dec.id, dec.init, dec.init?.object, dec.init?.property], (val) ->
+            internalTempRegex.test(val?.name)
+          )
+        )
+          # Python and Lua for-loops, for example
+          ++tempVariableDeclarations
+
     # for minus `int main() { return 0;}` 3 lines for cpp
-    if @language.id == 'cpp'
+    if @language.id is 'cpp'
       count -= 3
+    # offset the `public class AI` and the `public static void main(String[] args) {`
+    if @language.id is 'java'
+      count -= 2
+    if @language.id in ['javascript', 'cpp', 'java']
+      # for (let i = 0i i < 3; ++i) counts as 2, with an extra "line" for the variable declaration; remove it
+      count -= Math.min variableDeclarations, forLoops
+    if @language.id in ['python', 'lua']
+      # for loops use multiple temp variables in these languages
+      count -= tempVariableDeclarations
+
+    # Known unhandled cases:
+    # - Lua: `for i,v in ipairs(arr) do`  waaay overcounts
 
     return count
 
 Aether.getTokenSource = (raw) ->
   if /^\u56E7[a-zA-Z0-9+/=]+\f$/.test raw
+    { Unibabel } = require 'unibabel'  # Cannot be imported in Node.js context
     token = JSON.parse Unibabel.base64ToUtf8(raw.substr(1, raw.length-2))
     token.src
   else

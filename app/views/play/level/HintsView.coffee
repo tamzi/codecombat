@@ -3,9 +3,14 @@ State = require 'models/State'
 ace = require('lib/aceContainer')
 utils = require 'core/utils'
 aceUtils = require 'core/aceUtils'
+aetherUtils = require 'lib/aether_utils'
+userUtils = require 'app/lib/user-utils'
+globalVar = require 'core/globalVar'
+AskAIHelpView = require('views/play/level/AskAIHelpView').default
+
 
 module.exports = class HintsView extends CocoView
-  template: require('templates/play/level/hints-view')
+  template: require('app/templates/play/level/hints-view')
   className: 'hints-view'
   hintUsedThresholdSeconds: 10
 
@@ -13,13 +18,16 @@ module.exports = class HintsView extends CocoView
     'click .next-btn': 'onClickNextButton'
     'click .previous-btn': 'onClickPreviousButton'
     'click .close-hint-btn': 'hideView'
+    'click .ai-help-button': 'onAIHelpClicked'
 
   subscriptions:
     'level:show-victory': 'hideView'
     'tome:manual-cast': 'hideView'
+    'auth:user-credits-message-updates': 'onUserCreditsMessageUpdates'
 
   initialize: (options) ->
     {@level, @session, @hintsState} = options
+    @aceConfig = options.aceConfig or {}
     @state = new State({
       hintIndex: 0
       hintsViewTime: {}
@@ -32,13 +40,29 @@ module.exports = class HintsView extends CocoView
     @listenTo(@hintsState, 'change', debouncedRender)
     @listenTo(@state, 'change:hintIndex', @updateHint)
     @listenTo(@hintsState, 'change:hidden', @visibilityChanged)
+    unless globalVar.userCreditsMessage
+      globalVar.userCredtisMessage = ''
+    @creditMessage = globalVar.userCreditsMessage
+    @showAiBotHelp = utils.shouldShowAiBotHelp(@aceConfig)
 
   destroy: ->
     clearInterval(@timerIntervalID)
     super()
 
+  handleUserCreditsMessage: ->
+    userUtils.updateUserCreditsMessage()
+
+  onUserCreditsMessageUpdates: ->
+    @creditMessage = globalVar.userCreditsMessage
+    @render()
+
   afterRender: ->
     @$el.toggleClass('hide', @hintsState.get('hidden'))
+    @$('[data-toggle="popover"]').popover()
+    unless me.showChinaResourceInfo()
+      unless @creditMessage
+        @handleUserCreditsMessage()
+
     super()
     @playSound 'game-menu-open'
     @$('a').attr 'target', '_blank'
@@ -51,6 +75,7 @@ module.exports = class HintsView extends CocoView
       aceEditor = aceUtils.initializeACE @, codeLanguage
       aceEditors.push aceEditor
 
+
   getProcessedHint: ->
     language = @session.get('codeLanguage')
     hint = @state.get('hint')
@@ -58,25 +83,37 @@ module.exports = class HintsView extends CocoView
 
     # process
     translated = utils.i18n(hint, 'body')
-    filtered = utils.filterMarkdownCodeLanguages(translated, language)
+    filtered = aetherUtils.filterMarkdownCodeLanguages(translated, language)
     markedUp = marked(filtered)
 
     return markedUp
 
+  getIndexedHintTitle: ->
+    index = @state.get('hintIndex')
+    return $.i18n.t('play_level.hints_title').replace('{{number}}', index + 1)
+
+  getHintTitle: ->
+    hint = @state.get('hint')
+    if not hint or not hint.name
+      return @getIndexedHintTitle()
+    translated = utils.i18n(hint, 'name')
+    if not translated
+      return @getIndexedHintTitle()
+    return translated
+  
   updateHint: ->
     index = @state.get('hintIndex')
-    hintsTitle = $.i18n.t('play_level.hints_title').replace('{{number}}', index + 1)
-    @state.set({ hintsTitle, hint: @hintsState.getHint(index) })
+    @state.set({ hint: @hintsState.getHint(index) })
 
   onClickNextButton: ->
-    window.tracker?.trackEvent 'Hints Next Clicked', category: 'Students', levelSlug: @level.get('slug'), hintCount: @hintsState.get('hints')?.length ? 0, hintCurrent: @state.get('hintIndex'), []
+    window.tracker?.trackEvent 'Hints Next Clicked', category: 'Students', levelSlug: @level.get('slug'), hintCount: @hintsState.get('hints')?.length ? 0, hintCurrent: @state.get('hintIndex')
     max = @hintsState.get('total') - 1
     @state.set('hintIndex', Math.min(@state.get('hintIndex') + 1, max))
     @playSound 'menu-button-click'
     @updateHintTimer()
 
   onClickPreviousButton: ->
-    window.tracker?.trackEvent 'Hints Previous Clicked', category: 'Students', levelSlug: @level.get('slug'), hintCount: @hintsState.get('hints')?.length ? 0, hintCurrent: @state.get('hintIndex'), []
+    window.tracker?.trackEvent 'Hints Previous Clicked', category: 'Students', levelSlug: @level.get('slug'), hintCount: @hintsState.get('hints')?.length ? 0, hintCurrent: @state.get('hintIndex')
     @state.set('hintIndex', Math.max(@state.get('hintIndex') - 1, 0))
     @playSound 'menu-button-click'
     @updateHintTimer()
@@ -100,8 +137,17 @@ module.exports = class HintsView extends CocoView
     hintsViewTime[hintIndex]++
     hintsUsed = @state.get('hintsUsed')
     if hintsViewTime[hintIndex] > @hintUsedThresholdSeconds and not hintsUsed[hintIndex]
-      window.tracker?.trackEvent 'Hint Used', category: 'Students', levelSlug: @level.get('slug'), hintCount: @hintsState.get('hints')?.length ? 0, hintCurrent: hintIndex, []
+      window.tracker?.trackEvent 'Hint Used', category: 'Students', levelSlug: @level.get('slug'), hintCount: @hintsState.get('hints')?.length ? 0, hintCurrent: hintIndex
       hintsUsed[hintIndex] = true
       @state.set('hintsUsed', hintsUsed)
       clearInterval(@timerIntervalID)
     @state.set('hintsViewTime', hintsViewTime)
+
+  onAIHelpClicked: (e) ->
+    # Close hints view before opening AI Help modal to prevent overlapping
+    @hideView()
+    @openModalView(new AskAIHelpView({
+      propsData: {
+        aiChatKind: (@options.level?.get('aiChatKind')) or 'level-chat',
+      },
+    }))

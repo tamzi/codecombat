@@ -65,6 +65,8 @@ module.exports.createUserCodeProblem = (options) ->
   p.hint = config.hint or options.hint or ''  # Additional details about error message (sentence)
   p.range = options.range  # Like [{ofs: 305, row: 15, col: 15}, {ofs: 312, row: 15, col: 22}], or null
   p.userInfo = options.userInfo ? {}  # Record extra information with the error here
+  p.errorCode = options.errorCode
+  p.i18nParams = options.i18nParams
   p
 
 
@@ -165,9 +167,12 @@ extractTranspileErrorDetails = (options) ->
     when 'jaba'
       if error.location
         options.range = [error.location.start.offset, error.location.end.offset]
+        # TODO: see if we need to do offsetToPos like with cpp
+        #options.range = [ranges.offsetToPos(error.location.start.offset, code, codePrefix), ranges.offsetToPos(error.location.end.offset, code, codePrefix)]
       else
         console.error "Jaba error with no location information:", error
       options.hint = error.message
+      # TODO: see if we need to hide the hint like with cpp
     when 'cpp'
       if error.location
         options.range = [ranges.offsetToPos(error.location.start.offset, code, codePrefix), ranges.offsetToPos(error.location.end.offset, code, codePrefix)]
@@ -263,14 +268,16 @@ esperLocToAetherLoc = (loc) ->
 extractRuntimeErrorDetails = (options) ->
   if error = options.error
     options.kind ?= error.name  # I think this will pick up [Error, EvalError, RangeError, ReferenceError, SyntaxError, TypeError, URIError, DOMException]
-
-    if options.aether.options.useInterpreter
-      options.message = error.toString()
-    else
-      options.message = error.message or error.toString()
+    options.errorCode = error.code if error.code
+    options.i18nParams = error.i18nParams if error.i18nParams
+    options.message = error.message or error.toString()
     options.hint = error.hint or getRuntimeHint options
     options.level ?= error.level
     options.userInfo ?= error.userInfo
+    if error.range and not options.range
+      if _.isNumber(error.range[0]) and _.isNumber(error.range[1]) and error.range[0] < options.aether.raw.length  # Lua doesn't have good range info for some reason
+        range = ranges.offsetsToRange(error.range[0], error.range[1], options.aether.raw or '')
+        options.range = [range.start, range.end]  # We expect array instead of object in options.range below
 
   # NOTE: lastStatementRange set via instrumentation.logStatementStart(originalNode.originalRange)
   options.range ?= options.aether?.lastStatementRange
@@ -278,7 +285,7 @@ extractRuntimeErrorDetails = (options) ->
     loc = options.aether?.esperEngine?.evaluator?.topFrame?.ast?.loc
     options.range ?= esperLocToAetherLoc loc
 
-  if options.error?.name?
+  if options.error?.name? and not ///^#{options.error.name}///.test options.message
     options.message = "#{options.error.name}: #{options.message}"
 
   if options.range?

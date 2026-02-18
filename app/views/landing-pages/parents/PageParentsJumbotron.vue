@@ -1,9 +1,28 @@
 <script>
-import ButtonScheduleFreeClass from './ButtonScheduleFreeClass'
+import ButtonMainCta from './ButtonMainCta'
 
 export default {
   components: {
-    ButtonScheduleFreeClass
+    ButtonMainCta
+  },
+
+  props: {
+    mainCtaButtonText: {
+      type: String,
+      default: 'Schedule a Free Class'
+    },
+    mainCtaSubtext: {
+      type: String,
+      default: ''
+    },
+    trialClassExperiment: {
+      type: String,
+      default: 'trial-class'
+    },
+    brightchampsExperiment: {
+      type: String,
+      default: 'control'
+    }
   },
 
   methods: {
@@ -12,30 +31,69 @@ export default {
     }
   }
 }
+
 </script>
 
 <template>
-  <div class="top-jumbotron">
-    <img class="animated-griffin"
-         src="/images/pages/parents/Griffin_and_Alejandro1.svg"
-         alt="flying griffin"/>
+  <div :class="'top-jumbotron' + (brightchampsExperiment === 'brightchamps' ? ' brightchamps' : '')">
+    <img
+      v-if="trialClassExperiment == 'trial-class'"
+      class="animated-griffin"
+      src="/images/pages/parents/Griffin_and_Alejandro1.svg"
+      alt="flying griffin"
+    >
+    <div
+      v-else
+      class="money-back-guarantee-section"
+    >
+      <img
+        class="img-responsive money-back-guarantee"
+        src="/images/pages/parents/money_back_guarantee.png"
+        title="30-day money-back guarantee"
+        alt="&quot;30 Day Money back Guarantee Transparent&quot; by transparentpng.com is licensed under CC BY 4.0 - source: https://www.transparentpng.com/details/30-day-money-back-guarantee-transparent_15977.html"
+      >
+      <div class="money-back-guarantee-text">
+        Enroll with the confidence that you have 30 days to see if CodeCombat is right for you
+      </div>
+    </div>
     <div class="row">
       <div class="col-lg-12">
-        <h1 class="pixelated parents-header-text">Live Online Coding Classes</h1>
-        <h1 class="pixelated parents-header-text">Your Child Will Love</h1>
+        <h1 class="pixelated parents-header-text">
+          {{ $t('parents_landing_1.online_coding_classes') }}
+        </h1>
+        <!--<h1 class="pixelated parents-header-text">Your Child Will Love</h1>--><!-- Original; didn't convert as well -->
+        <h1 class="pixelated parents-header-text">
+          {{ $t('parents_landing_1.powered_by_play') }}
+        </h1>
       </div>
     </div>
 
-
     <div class="row">
       <div class="col-lg-12">
-        <button-schedule-free-class
+        <button-main-cta
+          :button-text="mainCtaButtonText"
+          :subtext="mainCtaSubtext"
           @click="onCtaClick"
         />
       </div>
     </div>
-  </div>
 
+    <div
+      v-if="brightchampsExperiment === 'brightchamps'"
+      class="row partnership-row"
+    >
+      <div class="col-lg-12 text-center">
+        <h1 class="pixelated parents-header-text">
+          {{ $t('parents_landing_1.partnership') }}
+        </h1>
+        <img
+          class="img-responsive"
+          src="/images/pages/parents/brightchamps-logo.png"
+          alt="BrightCHAMPS"
+        >
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -43,7 +101,6 @@ export default {
     font-style: normal;
 
     margin-bottom: 0;
-    min-height: 580px;
 
     padding-top: 155px;
     overflow-x: hidden;
@@ -95,10 +152,23 @@ export default {
     max-width: 320px;
   }
 
-  .animated-griffin {
+  .animated-griffin, .money-back-guarantee-section {
     position: absolute;
     top: 30%;
     right: 6%;
+  }
+
+  .money-back-guarantee-section {
+    width: 310px;
+    right: calc(20% - 185px);
+    font-family: 'Work Sans', sans-serif;
+    color: #131B25;
+    font-weight: 300;
+    font-size: 22px;
+  }
+
+  img.money-back-guarantee {
+    margin: 0px auto;
   }
 
   @media (max-width: 1000px) {
@@ -115,6 +185,16 @@ export default {
         bottom 52px right 475px;
     }
 
+    .top-jumbotron.brightchamps {
+      /* Moves images out of the way of the heading to keep it legible */
+      background-size: 210px, 0, 90px, 260px, 250px;
+      background-position: top 0% left 0%,
+      top 50px left 30px,
+      top 35px right 280px,
+      top 360px right 300px,
+      bottom 52px right 475px;
+    }
+
     .animated-griffin {
       position: absolute;
       top: -1%;
@@ -122,12 +202,16 @@ export default {
       overflow: hidden;
       max-width: 50%;
     }
+
+    .money-back-guarantee-section {
+      display: none;
+    }
   }
 
   .top-jumbotron h1 {
     font-weight: 700;
   }
-  
+
   @media (max-width: 767px) {
     .parents-header-text {
       font-size: 40px;
@@ -151,6 +235,27 @@ export default {
         top 360px right 300px,
         bottom 52px right 475px;
     }
+
+    .top-jumbotron.brightchamps {
+      /* Moves images out of the way of the heading to keep it legible */
+      background-size: 210px, 0, 90px, 260px, 250px;
+      background-position: top 0% left 0%,
+      top 50px left 30px,
+      top 35px right 280px,
+      top 360px right 300px,
+      bottom 52px right 475px;
+    }
+  }
+
+  .partnership-row {
+    margin-top: 58px;
+  }
+  .partnership-row h1 {
+    margin-bottom: 10px;
+  }
+  .partnership-row img.img-responsive {
+    width: 320px;
+    margin: 0px auto;
   }
 
 </style>

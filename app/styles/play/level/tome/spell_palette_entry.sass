@@ -1,9 +1,29 @@
 @import "app/styles/mixins"
 @import "app/styles/bootstrap/variables"
+@import "app/styles/play/variables"
 
 #level-view.hero .spell-palette-entry-view
   // Not clickable.
   cursor: default
+
+#spell-palette-view-mid .spell-palette-entry-view
+  margin-left: 38px
+  width: 174px
+  width: calc(100% - 38px)
+
+  span
+    cursor: pointer
+    user-select: none
+
+  &:hover
+    color: #f3cd90
+
+  &.selected
+    color: white
+
+#spell-palette-view .spell-palette-entry-view
+  margin: 0 1vw 0 0
+  min-width: 10vw
 
 .spell-palette-entry-view
   display: block
@@ -18,29 +38,19 @@
   overflow: hidden
   white-space: nowrap
 
-  margin-left: 38px
-  width: 174px
-  width: calc(100% - 38px)
-
-  span
-    cursor: pointer
-    user-select: none
-    
   &:hover
-    color: #f3cd90
-
-  &.selected
-    color: white
-
-  &:hover
-    border: 1px solid #000000
+    border: 1px solid #f3cd90
 
   &.pinned
-    background-color: darken(#FFFFFF, 25%)
+    background-color: #26478a
 
   &.single-entry
     height: 38px
     line-height: 38px
+
+  img.spawnable-image
+    height: 16px
+    margin-right: 4px
 
   // Originally pulled these colors from the most relevant textmate-theme classes, but then fudged them a lot.
   //&.function
@@ -63,23 +73,17 @@
     .rtl-right-aligned
       text-align: right
 
-body.dialogue-view-active
-  .spell-palette-popover.popover
-    top: 50px !important
-  
 .spell-palette-popover.popover
-  // Only those popovers which are our direct children (spell documentation)
-  top: 80px !important
-  left: auto !important
-  right: 45%
-  max-width: 600px
+  top: 80px
   min-width: 500px
+
+.spell-palette-popover.popover, .blocklyTooltipDiv
+  max-width: 600px
   padding: 0
   border-style: solid
   border-image: url(/images/level/popover_border_background.png) 16 12 fill round
   border-width: 16px 12px
   @include box-shadow(0 0 0 #000)
-  // Prevent flickering in weird scenarios where popover goes over its own property
 
   //Fixes punctuation but puts comment marker on right, which is apparently worse.
   //body[lang="he"] &, body[lang="ar"] &, body[lang="fa"] &, body[lang="ur"] &
@@ -109,14 +113,7 @@ body.dialogue-view-active
     @include animation(jiggle .3s infinite)
 
   &.pinned
-    top: 50px !important
-    right: 45%
-    // bottom: 151px
     @include user-select(text)
-    // Wish I could set max-width and max-height (and override Bootstrap's stuff)
-    // but without explicitly setting height, child overflow-y: scroll doesn't work
-    min-width: 45%
-    height: 60%
 
     .arrow
       display: none
@@ -153,6 +150,10 @@ body.dialogue-view-active
     img
       float: right
 
+    img:first-child
+      max-width: 100px
+      margin-top: -30px
+
   &.top .arrow
     bottom: -2%
   &.bottom .arrow
@@ -186,18 +187,10 @@ body.dialogue-view-active
     body[lang="he"] &, body[lang="ar"] &, body[lang="fa"] &, body[lang="ur"] &
       font-family: "Cousine", "Courier", "Courier New", monospace !important
 
-html.no-borderimage
-  .spell-palette-popover.popover
-    background: transparent url(/images/level/popover_background.png)
-    background-size: 100% 100%
-    border: 0
-
-html.fullscreen-editor
-  .spell-palette-popover.popover.pinned
-    min-width: 600px
-    bottom: inherit
-    right: 50%
-    margin-right: -300px
+.blocklyTooltipDiv
+  .docs-ace-container
+    &, .docs-ace
+      white-space: pre-wrap
 
 // iPad property docs
 

@@ -1,4 +1,4 @@
-FROM node:8.15.1-jessie
+FROM node:16
 
 ARG RUBY_VERSION=2.6.1
 ENV NPM_GLOBAL_PREFIX=/npm
@@ -10,7 +10,7 @@ RUN apt-get update && \
     apt-get install -y git curl libssl-dev libreadline-dev zlib1g-dev autoconf bison \
                        build-essential libyaml-dev libncurses5-dev \
                        libffi-dev libgdbm-dev && \
-    curl -sL https://github.com/rbenv/rbenv-installer/raw/master/bin/rbenv-installer | bash -
+    curl -sL https://github.com/rbenv/rbenv-installer/raw/main/bin/rbenv-installer | bash -
 
 RUN rbenv install ${RUBY_VERSION} && \
     rbenv global ${RUBY_VERSION}

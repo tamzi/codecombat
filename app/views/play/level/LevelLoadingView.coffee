@@ -1,9 +1,10 @@
 require('app/styles/play/level/level-loading-view.sass')
 CocoView = require 'views/core/CocoView'
-template = require 'templates/play/level/level-loading-view'
+template = require 'app/templates/play/level/level-loading-view'
 ace = require('lib/aceContainer')
 utils = require 'core/utils'
 aceUtils = require 'core/aceUtils'
+aetherUtils = require 'lib/aether_utils'
 SubscribeModal = require 'views/core/SubscribeModal'
 LevelGoals = require('./LevelGoals').default
 store = require 'core/store'
@@ -23,13 +24,25 @@ module.exports = class LevelLoadingView extends CocoView
     'level:subscription-required': 'onSubscriptionRequired'  # If they'd need a subscription.
     'level:course-membership-required': 'onCourseMembershipRequired'  # If they need to be added to a course.
     'level:license-required': 'onLicenseRequired' # If they need a license.
+    'level:locked': 'onLevelLocked'
     'subscribe-modal:subscribed': 'onSubscribed'
 
   shortcuts:
     'enter': 'onEnterPressed'
 
+  initialize: (options={}) ->
+    @utils = utils
+    @loadingWingClass = _.sample(['alejandro', 'anya', 'chess', 'naria', 'okar'])
+    @showOzaria = utils.showOzaria()
+    @showCoco = !@showOzaria
+    if @showCoco
+      @$el.addClass 'coco-view'
+    else
+      @$el.addClass 'ozar-view'
+
   afterRender: ->
     super()
+    return if @showOzaria
     unless @level?.get('loadingTip')
       @$el.find('.tip.rare').remove() if _.random(1, 10) < 9
       tips = @$el.find('.tip').addClass('to-remove')
@@ -54,13 +67,22 @@ module.exports = class LevelLoadingView extends CocoView
   onLevelLoaded: (e) ->
     return if @level
     @level = e.level
-    @prepareGoals e
-    @prepareTip()
-    @prepareIntro()
+    @$el.toggleClass 'codecombat-junior', @level.get('product', true) is 'codecombat-junior'
+    @$el.toggleClass 'codecombat', @level.get('product', true) is 'codecombat'
+    if @showCoco and @level.get('product', true) is 'codecombat'
+      @prepareGoals e
+      @prepareTip()
+      @prepareIntro()
+    else if @level.get('product', true) is 'codecombat-junior'
+      @prepareLevelName()
 
   onSessionLoaded: (e) ->
     return if @session
     @session = e.session if e.session.get('creator') is me.id
+
+  prepareLevelName: ->
+    name = utils.i18n(@level.attributes, 'displayName') or utils.i18n(@level.attributes, 'name')
+    @$el.find('.level-name').text(name).show()
 
   prepareGoals: ->
     @levelGoalsComponent = new LevelGoals({
@@ -113,13 +135,15 @@ module.exports = class LevelLoadingView extends CocoView
     @docs = @level.get('documentation') ? {}
     specific = @docs.specificArticles or []
     @intro = _.find specific, name: 'Intro'
-    if window.serverConfig.picoCTF
-      @intro ?= body: ''
 
   showReady: ->
     return if @shownReady
     @shownReady = true
-    _.delay @finishShowingReady, 100  # Let any blocking JS hog the main thread before we show that we're done.
+    if @showCoco
+      _.delay @finishShowingReady, 100  # Let any blocking JS hog the main thread before we show that we're done.
+    else
+      @unveilPreviewTime = new Date().getTime()
+      _.delay @startUnveiling, 100  # Let any blocking JS hog the main thread before we show that we're done.
 
   finishShowingReady: =>
     return if @destroyed
@@ -127,7 +151,7 @@ module.exports = class LevelLoadingView extends CocoView
     if showIntro?
       autoUnveil = not showIntro
     else
-      autoUnveil = @options.autoUnveil or @session?.get('state').complete
+      autoUnveil = @options.autoUnveil or @session?.get('state').complete or @level.get('product', true) is 'codecombat-junior'
     if autoUnveil
       @startUnveiling()
       @unveil true
@@ -138,10 +162,26 @@ module.exports = class LevelLoadingView extends CocoView
       @unveil false
 
   startUnveiling: (e) ->
-    @playSound 'menu-button-click'
-    @unveiling = true
-    Backbone.Mediator.publish 'level:loading-view-unveiling', {}
-    _.delay @onClickStartLevel, 1000  # If they never mouse-up for the click (or a modal shows up and interrupts the click), do it anyway.
+    # todo: this file, coco and ozar do similar things with different steps, should be refactored
+    if @showCoco
+      @playSound 'menu-button-click'
+      @unveiling = true
+      Backbone.Mediator.publish 'level:loading-view-unveiling', {}
+      _.delay @onClickStartLevel, 1000  # If they never mouse-up for the click (or a modal shows up and interrupts the click), do it anyway.
+    else
+      levelSlug = @level?.get('slug') or @options?.level?.get('slug')
+      timespent = (new Date().getTime() - @unveilPreviewTime) / 1000
+      window.tracker?.trackEvent 'Finish Viewing Intro', {
+        category: 'Play Level'
+        label: 'level loading'
+        level: levelSlug
+        levelID: levelSlug
+        timespent # This is no longer a very useful metric as it now happens right away.
+      }
+      details = @$('#loading-details')?[0]
+      unless details?.style?.display == 'none'
+        details?.style?.display = "none"
+      Backbone.Mediator.publish 'level:loading-view-unveiled', view: @
 
   onClickStartLevel: (e) =>
     return if @destroyed
@@ -204,10 +244,17 @@ module.exports = class LevelLoadingView extends CocoView
     @unveilPreviewTime = new Date().getTime()
 
   resize: ->
-    maxHeight = $('#page-container').outerHeight(true)
+    goalsHeight = @$el.find('.level-loading-goals').outerHeight(true) or 0
+    introDocHeight = @$el.find('.intro-doc-content').outerHeight(true) or 100
+    maxHeight = Math.min $('#level-view').outerHeight(true), goalsHeight + introDocHeight + 100 + 0.11 * $(window).innerHeight() + 40
+    maxHeight = Math.max maxHeight, 0.5 * $(window).innerHeight()
     minHeight = $('#code-area').outerHeight(true)
-    minHeight -= 20
-    @$el.css height: maxHeight
+    if $('#code-area').offset().top > 100
+      # Code area is on the bottom; be just as tall as the game area instead
+      minHeight = $('#canvas-wrapper').outerHeight(true) + $('#control-bar-view').outerHeight(true)
+    minHeight -= 10
+    minHeight = Math.min minHeight, maxHeight
+    @$el.css height: '100%'
     @$loadingDetails.css minHeight: minHeight, maxHeight: maxHeight
     if @intro
       $intro = @$el.find('.intro-doc')
@@ -222,19 +269,8 @@ module.exports = class LevelLoadingView extends CocoView
 
   unveilIntro: =>
     return if @destroyed or not @intro or @unveiled
-    if window.serverConfig.picoCTF and problem = @level.picoCTFProblem
-      html = marked """
-        ### #{problem.name}
-
-        #{@intro.body}
-
-        #{problem.description}
-
-        #{problem.category} - #{problem.score} points
-      """, sanitize: false
-    else
-      language = @session?.get('codeLanguage')
-      html = marked utils.filterMarkdownCodeLanguages(utils.i18n(@intro, 'body'), language)
+    language = @session?.get('codeLanguage')
+    html = marked aetherUtils.filterMarkdownCodeLanguages(utils.i18n(@intro, 'body'), language)
     @$el.find('.intro-doc').removeClass('hidden').find('.intro-doc-content').html html
     @resize()
     @configureACEEditors()
@@ -249,20 +285,34 @@ module.exports = class LevelLoadingView extends CocoView
     @resize()
 
   onSubscriptionRequired: (e) ->
-    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
+    return if @showOzaria
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container, .could-not-load').hide()
     @$el.find('.subscription-required').show()
+    @loadingErrorExplained = true
 
   onCourseMembershipRequired: (e) ->
-    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container, .could-not-load').hide()
     @$el.find('.course-membership-required').show()
+    @loadingErrorExplained = true
 
   onLicenseRequired: (e) ->
-    @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container, .could-not-load').hide()
     @$el.find('.license-required').show()
+    @loadingErrorExplained = true
+
+  onLevelLocked: (e) ->
+    @$el.find('.level-loading-goals, .tip, .progress-or-start-container, .could-not-load').hide()
+    @$el.find('.level-locked').show()
+    @loadingErrorExplained = true
 
   onLoadError: (resource) ->
+    startCase = (str) -> str.charAt(0).toUpperCase() + str.slice(1)
     @$el.find('.level-loading-goals, .tip, .progress-or-start-container').hide()
-    @$el.find('.could-not-load').show()
+    if resource.resource.jqxhr.status is 404
+      @$el.find('.resource-not-found>span').text($.i18n.t('loading_error.resource_not_found', {resource: startCase(resource.resource.name)}))
+      @$el.find('.resource-not-found').show()
+    else unless @loadingErrorExplained
+      @$el.find('.could-not-load').show()
 
   onClickStartSubscription: (e) ->
     @openModalView new SubscribeModal()
@@ -275,4 +325,7 @@ module.exports = class LevelLoadingView extends CocoView
 
   destroy: ->
     $(window).off 'resize', @onWindowResize
+    silentStore = { commit: _.noop, dispatch: _.noop }
+    @levelGoalsComponent?.$destroy()
+    @levelGoalsComponent?.$store = silentStore
     super()

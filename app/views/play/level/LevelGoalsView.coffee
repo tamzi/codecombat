@@ -1,6 +1,6 @@
 require('app/styles/play/level/goals.sass')
 CocoView = require 'views/core/CocoView'
-template = require 'templates/play/level/goals'
+template = require 'app/templates/play/level/goals'
 {me} = require 'core/auth'
 utils = require 'core/utils'
 LevelSession = require 'models/LevelSession'
@@ -23,6 +23,8 @@ module.exports = class LevelGoalsView extends CocoView
     'level:set-playing': 'onSetPlaying'
     'surface:playback-restarted': 'onSurfacePlaybackRestarted'
     'surface:playback-ended': 'onSurfacePlaybackEnded'
+    'level:gather-chat-message-context': 'onGatherChatMessageContext'
+    'sprite:hero-health-updated': 'onHeroHealthUpdated'
 
   events:
     'mouseenter': ->
@@ -37,13 +39,15 @@ module.exports = class LevelGoalsView extends CocoView
   constructor: (options) ->
     super options
     @level = options.level
-    
+
   afterRender: ->
     @levelGoalsComponent = new LevelGoals({
       el: @$('.goals-component')[0],
       store
-      propsData: { showStatus: true }
+      propsData: { showStatus: true, product: @level.get('product', true) }
     })
+    @$el.toggleClass('codecombat-junior', @level.get('product', true) is 'codecombat-junior')
+    null
 
   onNewGoalStates: (e) ->
     _.assign(@levelGoalsComponent, _.pick(e, 'overallStatus', 'timedOut', 'goals', 'goalStates'))
@@ -93,6 +97,26 @@ module.exports = class LevelGoalsView extends CocoView
     if @soundToPlayWhenPlaybackEnded
       @playSound @soundToPlayWhenPlaybackEnded
 
+  onGatherChatMessageContext: (e) ->
+    context = e.chat.context
+    context.goalStates = {}
+    for goal in @levelGoalsComponent.goals
+      continue if goal.optional or (goal.team and goal.team isnt me.team)
+      goalState = @levelGoalsComponent.goalStates[goal.id]
+      context.goalStates[goal.id] = name: goal.name, status: goalState?.status or 'incomplete'
+      if e.chat.example
+        # Add translation info, for generating permutations
+        context.goalStates[goal.id].i18n = _.cloneDeep(goal.i18n ? {})
+      else
+        # Bake the translation in
+        context.goalStates[goal.id].name = utils.i18n @goal, 'name'
+        statusKey = { success: 'success', failure: 'failing', incomplete: 'incomplete' }[context.goalStates[goal.id].status]
+        context.goalStates[goal.id].status = $.i18n.t("play_level.#{statusKey}")
+    null
+
+  onHeroHealthUpdated: (e) ->
+    store.commit 'game/setHeroHealth', current: e.health, max: e.maxHealth
+
   updateHeight: ->
     return if @$el.hasClass('brighter') or @$el.hasClass('secret')
     return if (new Date() - @lastSizeTweenTime) < 500  # Don't measure this while still animating, might get the wrong value. Should match sass transition time.
@@ -100,7 +124,7 @@ module.exports = class LevelGoalsView extends CocoView
 
   updatePlacement: ->
     # Expand it if it's at the end. Mousing over reverses this.
-    expand = @playbackEnded isnt @mouseEntered
+    expand = @playbackEnded isnt @mouseEntered or @level.get('product', true) is 'codecombat-junior'
     return if expand is @expanded
     @updateHeight()
     sound = if expand then 'goals-expand' else 'goals-collapse'
@@ -128,3 +152,9 @@ module.exports = class LevelGoalsView extends CocoView
   onSetLetterbox: (e) ->
     @$el.toggle not e.on
     @updatePlacement()
+
+  destroy: ->
+    silentStore = { commit: _.noop, dispatch: _.noop }
+    @levelGoalsComponent?.$destroy()
+    @levelGoalsComponent?.$store = silentStore
+    super()

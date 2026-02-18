@@ -3,6 +3,30 @@
 @import "app/styles/style-flat-variables"
 
 #teacher-student-view
+  #numerical-courses-status
+    display: inline-flex
+
+    .status-col
+      display: flex
+      position: relative
+      margin-left: 2em
+      .cell
+        display: flex
+        flex-direction: column
+        margin-left: 3px
+      &:before
+        position: absolute
+        right: 100%
+    .cs
+      &:before
+        content: 'CS'
+    .gd
+      &:before
+        content: 'GD'
+    .wd
+      &:before
+        content: 'WD'
+
   .breadcrumbs
     color: #065e73
     a
@@ -90,8 +114,6 @@
         font-size: 11px
         fill: #000000
         font-weight: bold
-
-    .domain
 
     g.tick
       font-size: 13px
@@ -253,6 +275,6 @@
   table.side-by-side
     width: 100%
     td
-      vertical-align: top     
+      vertical-align: top
     td.project-blurb
       padding-left: 10px

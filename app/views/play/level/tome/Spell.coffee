@@ -1,9 +1,11 @@
 SpellView = require './SpellView'
 SpellTopBarView = require './SpellTopBarView'
 {me} = require 'core/auth'
-{createAetherOptions, replaceSimpleLoops} = require 'lib/aether_utils'
+{ createAetherOptions, replaceSimpleLoops } = require 'lib/aether_utils'
+{ translateJS } = require 'lib/translate-utils'
 utils = require 'core/utils'
 
+# while migrating to JS, function: hasChangedSignificantly doesn't work correctly and throws errors when loading a level
 module.exports = class Spell
   loaded: false
   view: null
@@ -15,7 +17,6 @@ module.exports = class Spell
     @session = options.session
     @otherSession = options.otherSession
     @spectateView = options.spectateView
-    @spectateOpponentCodeLanguage = options.spectateOpponentCodeLanguage
     @observing = options.observing
     @supermodel = options.supermodel
     @skipProtectAPI = options.skipProtectAPI
@@ -23,7 +24,7 @@ module.exports = class Spell
     @level = options.level
     @createFromProgrammableMethod options.programmableMethod, options.language
     if @canRead()  # We can avoid creating these views if we'll never use them.
-      @view = new SpellView {spell: @, level: options.level, session: @session, otherSession: @otherSession, worker: @worker, god: options.god, @supermodel, levelID: options.levelID}
+      @view = new SpellView {spell: @, level: options.level, session: @session, otherSession: @otherSession, worker: @worker, god: options.god, @supermodel, levelID: options.levelID, classroomAceConfig: options.classroomAceConfig, spectateView: @spectateView, courseID: options.courseID, blocks: options.blocks, codeFormat: options.codeFormat}
       @view.render()  # Get it ready and code loaded in advance
       @topBarView = new SpellTopBarView
         hintsState: options.hintsState
@@ -34,6 +35,11 @@ module.exports = class Spell
         session: options.session
         courseID: options.courseID
         courseInstanceID: options.courseInstanceID
+        blocks: options.blocks
+        blocksHidden: options.blocksHidden
+        codeFormat: options.codeFormat
+        teacherID: options.teacherID
+        showLevelHelp: options.classroomAceConfig?.levelChat
       @topBarView.render()
     Backbone.Mediator.publish 'tome:spell-created', spell: @
 
@@ -78,20 +84,11 @@ module.exports = class Spell
   setLanguage: (@language) ->
     @language = 'html' if @level.isType('web-dev')
     @displayCodeLanguage = utils.capitalLanguages[@language]
-    if @language is 'java' and not @languages[@language]
-      lines = (@languages.javascript ? '').split '\n'
-      lines.push '' if lines[lines.length - 1] isnt ''
-      @languages.java = """
-        public class AI {
-          public static void main(String[] args) {
-        #{(lines.map ((line) -> '    ' + line)).join('\n')}
-          }
-        }
-      """
-    if @language is 'cpp' and not @languages[@language]
-      @languages.cpp = utils.translatejs2cpp @languages.javascript
+    if @language is 'python' and @languages[@language] is '# Should fill in some default source\n'
+      @languages[@language] = null
+    if @language in ['cpp', 'java', 'lua', 'coffeescript', 'python'] and not @languages[@language]
+      @languages[@language] = translateJS @languages.javascript, @language
     @originalSource = @languages[@language] ? @languages.javascript
-    @originalSource = @addPicoCTFProblem() if window.serverConfig.picoCTF
 
     if @level.isType('web-dev')
       # Pull apart the structural wrapper code and the player code, remember the wrapper code, and strip indentation on player code.
@@ -102,39 +99,58 @@ module.exports = class Spell
     # Translate comments chosen spoken language.
     return unless @commentContext
     context = $.extend true, {}, @commentContext
-
-    if @language is 'lua'
-      for k,v of context
-        context[k] = v.replace /\b([a-zA-Z]+)\.([a-zA-Z_]+\()/, '$1:$2'
-
-    if @commentI18N
-      spokenLanguage = me.get 'preferredLanguage'
-      while spokenLanguage
-        spokenLanguage = spokenLanguage.substr 0, spokenLanguage.lastIndexOf('-') if fallingBack?
-        if spokenLanguageContext = @commentI18N[spokenLanguage]?.context
-          context = _.merge context, spokenLanguageContext
-          break
-        fallingBack = true
-    try
-      @originalSource = _.template @originalSource, context
-      @wrapperCode = _.template @wrapperCode, context
-    catch e
-      console.error "Couldn't create example code template of", @originalSource, "\nwith context", context, "\nError:", e
+    spokenLanguage = me.get 'preferredLanguage'
+    @originalSource = @translateCommentContext source: @originalSource, commentContext: @commentContext, commentI18N: @commentI18N, spokenLanguage: spokenLanguage, codeLanguage: @language
+    @wrapperCode = @translateCommentContext source: @wrapperCode, commentContext: @commentContext, commentI18N: @commentI18N, spokenLanguage: spokenLanguage, codeLanguage: @language
 
     if /loop/.test(@originalSource) and @level.isType('course', 'course-ladder', 'hero', 'hero-ladder')
       # Temporary hackery to make it look like we meant while True: in our sample code until we can update everything
       @originalSource = replaceSimpleLoops @originalSource, @language
 
+  translateCommentContext: ({ source, commentContext, commentI18N, codeLanguage, spokenLanguage }) ->
+    commentContext = $.extend true, {}, commentContext
+
+    if codeLanguage is 'lua'
+      for k, v of commentContext
+        commentContext[k] = v.replace /\b([a-zA-Z]+)\.([a-zA-Z_]+\()/, '$1:$2'
+
+    if commentI18N
+      commentContext = utils.i18n({context: commentContext, i18n: commentI18N, spokenLanguage: spokenLanguage}, 'context')
+    try
+      translatedSource = _.template source, commentContext
+    catch e
+      console.error "Couldn't create example code template of", source, "\nwith commentContext", commentContext, "\nError:", e
+      translatedSource = source
+    translatedSource
+
+  untranslateCommentContext: ({ source, commentContext, commentI18N, codeLanguage, spokenLanguage }) ->
+    commentContext = $.extend true, {}, commentContext
+
+    if codeLanguage is 'lua'
+      for k, v of commentContext
+        commentContext[k] = v.replace /\b([a-zA-Z]+)\.([a-zA-Z_]+\()/, '$1:$2'
+
+    if commentI18N
+      while spokenLanguage
+        spokenLanguage = spokenLanguage.substr 0, spokenLanguage.lastIndexOf('-') if fallingBack?
+        if spokenLanguageContext = commentI18N[spokenLanguage]?.context
+          commentContext = _.merge commentContext, spokenLanguageContext
+          break
+        fallingBack = true
+    for k, v of commentContext
+      source = source.replace v, "<%= #{k} %>"
+    source
+
+  getSolution: (codeLanguage) ->
+    hero = _.find (@level.get('thangs') ? []), id: 'Hero Placeholder'
+    component = _.find(hero.components ? [], (x) -> x?.config?.programmableMethods?.plan)
+    plan = component.config?.programmableMethods?.plan
+    solutions = _.filter (plan?.solutions ? []), (s) -> not s.testOnly and s.succeeds
+    rawSource = _.find(solutions, language: codeLanguage)?.source
+    rawSource
+
   constructHTML: (source) ->
     @wrapperCode.replace '☃', source
-
-  addPicoCTFProblem: ->
-    return @originalSource unless problem = @level.picoCTFProblem
-    description = """
-      -- #{problem.name} --
-      #{problem.description}
-    """.replace /<p>(.*?)<\/p>/gi, '$1'
-    ("// #{line}" for line in description.split('\n')).join('\n') + '\n' + @originalSource
 
   addThang: (thang) ->
     if @thang?.thang.id is thang.id
@@ -159,6 +175,11 @@ module.exports = class Spell
       @source = source
     else
       source = @getSource()
+    if @level.get('product') is 'codecombat-junior'
+      # Rewrite blank `health` calls to `hero.health`, otherwise global value assignment isn't dynamically updated
+      source = source.replace /(^|[^a-zA-Z.])health(?!\w)/g, (match, prefix) ->
+        return match if prefix.endsWith('hero.')
+        return "#{prefix}hero.health"
     unless @language is 'html'
       @thang?.aether.transpile source
       @session.lastAST = @thang?.aether.ast
@@ -202,6 +223,8 @@ module.exports = class Spell
       includeFlow: includeFlow
       problemContext: problemContext
       useInterpreter: true
+    if @level.get('product') is 'codecombat-junior'
+      aetherOptions.executionLimit = 100 * 1000  # Junior levels shouldn't use as many statements, can exceed execution limit earlier (100K) than normal levels (default 3M)
     aether = new Aether aetherOptions
     if @worker
       workerMessage =
@@ -213,7 +236,8 @@ module.exports = class Spell
 
   updateLanguageAether: (@language) ->
     @thang?.aether?.setLanguage @language
-    @thang?.castAether = null
+    if @thang
+      @thang.castAether = null
     Backbone.Mediator.publish 'tome:spell-changed-language', spell: @, language: @language
     if @worker
       workerMessage =
@@ -258,6 +282,48 @@ module.exports = class Spell
     @problemContext.thisValueAlias = if @level.isType('game-dev') then 'game' else 'hero'
 
     @problemContext
+
+  createChatMessageContext: (chat) ->
+    context = code: {}
+    if chat.example
+      # Add translation info, for generating permutations
+      context.codeComments = context: @commentContext || {}, i18n: @commentI18N || {}
+
+    for codeType in ['start', 'solution', 'current']
+      context.code[codeType] = {}
+      if chat.example and @language is 'javascript'
+        codeLanguages = ['javascript', 'python', 'coffeescript', 'lua', 'java', 'cpp']
+      else
+        # TODO: how to handle web dev?
+        codeLanguages = [@language]
+      for codeLanguage in codeLanguages
+        source = switch codeType
+          when 'start' then @languages[codeLanguage]
+          when 'solution' then @getSolution codeLanguage
+          when 'current'
+            if codeLanguage is @language then @source else ''
+        jsSource = switch codeType
+          when 'start' then @languages.javascript
+          when 'solution' then @getSolution 'javascript'
+          when 'current'
+            if @language is 'javascript' then @source else ''
+        if jsSource and not source
+          source = translateJS jsSource, codeLanguage
+        continue unless source
+        if codeType is 'current' # handle cpp/java source
+          if /^\u56E7[a-zA-Z0-9+/=]+\f$/.test source
+            { Unibabel } = require 'unibabel'  # Cannot be imported in Node.js context
+            token = JSON.parse Unibabel.base64ToUtf8(source.substr(1, source.length-2))
+            source = token.src
+        if chat.example and codeType is 'current'
+          # Try to go backwards from translated string literals to initial comment tags so that we can regenerate those comments in other languages
+          source = @untranslateCommentContext source: source, commentContext: @commentContext, commentI18N: @commentI18N, spokenLanguage: me.get('preferredLanguage'), codeLanguage: codeLanguage
+        if not chat.example
+          # Bake the translation in
+          source = @translateCommentContext source: source, commentContext: @commentContext, commentI18N: @commentI18N, spokenLanguage: me.get('preferredLanguage'), codeLanguage: codeLanguage
+        context.code[codeType][codeLanguage] = source
+
+    context
 
   reloadCode: ->
     # We pressed the reload button. Fetch our original source again in case it changed.

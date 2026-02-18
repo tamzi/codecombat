@@ -57,6 +57,7 @@ module.exports.clone = clone = (obj, skipThangs=false) ->
   newInstance
 
 # Walk a key chain down to the value. Can optionally set newValue instead.
+# Same as in core utils, but don't want mutual imports
 module.exports.downTheChain = downTheChain = (obj, keyChain, newValue=undefined) ->
   return null unless obj
   return obj[keyChain] unless _.isArray keyChain
@@ -114,7 +115,7 @@ module.exports.consolidateThangs = consolidateThangs = (thangs) ->
   dissectRectangles grid, addStructuralThang, false, debug
 
   # Now add the new structural thangs back to thangs and return the ones not in the dissection.
-  console.log 'Turned', structural.length, 'structural Thangs into', dissection.length, 'dissecting Thangs.'
+  #console.log 'Turned', structural.length, 'structural Thangs into', dissection.length, 'dissecting Thangs.'
   thangs.push dissection...
   structural[dissection.length ... structural.length]
 
